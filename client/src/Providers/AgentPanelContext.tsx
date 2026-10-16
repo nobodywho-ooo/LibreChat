@@ -19,6 +19,7 @@ import {
   useMCPToolsQuery,
 } from '~/data-provider';
 import { isMCPServerReadyForAgent } from '~/components/MCP/mcpServerUtils';
+import { getPageRouteId } from '~/utils/pageRoutes';
 import { Panel, isEphemeralAgent } from '~/common';
 import store from '~/store';
 
@@ -40,7 +41,7 @@ export function AgentPanelProvider({ children }: { children: React.ReactNode }) 
    * drawer, or the insights route collapsing it), so only a visible form
    * releases the MCP catalogs ahead of the background warmup schedule */
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
-  const panelVisible = sidebarExpanded && !location.pathname.startsWith('/insights');
+  const panelVisible = sidebarExpanded && !getPageRouteId(location.pathname);
   useEffect(() => {
     if (panelVisible) {
       activateCatalog('mcpServers');

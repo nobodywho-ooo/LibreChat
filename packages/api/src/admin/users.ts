@@ -1,6 +1,7 @@
+import { z } from 'zod';
 import { Types } from 'mongoose';
 import { PrincipalType, SystemRoles } from 'librechat-data-provider';
-import { logger, isValidObjectIdString } from '@librechat/data-schemas';
+import { logger, escapeRegExp, isValidObjectIdString } from '@librechat/data-schemas';
 import type {
   IUser,
   IConfig,
@@ -16,6 +17,31 @@ import { parsePagination } from './pagination';
 const MAX_SEARCH_LENGTH = 200;
 
 const USER_LIST_FIELDS = '_id name username email avatar role provider createdAt updatedAt';
+
+const userListQuerySchema = z.object({
+  search: z.string().trim().max(MAX_SEARCH_LENGTH).optional(),
+  role: z.string().optional(),
+  provider: z.string().optional(),
+  sortBy: z.enum(['createdAt', 'name', 'email']).catch('createdAt'),
+  sortDirection: z.enum(['asc', 'desc']).catch('desc'),
+});
+
+type UserListQuery = z.infer<typeof userListQuerySchema>;
+
+function buildUserListQuery({ search, role, provider }: UserListQuery): FilterQuery<IUser> {
+  const query: FilterQuery<IUser> = {};
+  if (role) {
+    query.role = role;
+  }
+  if (provider) {
+    query.provider = provider;
+  }
+  if (search) {
+    const regex = new RegExp(escapeRegExp(search), 'i');
+    query.$or = [{ name: regex }, { email: regex }, { username: regex }];
+  }
+  return query;
+}
 
 export interface AdminUsersDeps {
   findUsers: (
@@ -83,10 +109,17 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
 
   async function listUsersHandler(req: ServerRequest, res: Response) {
     try {
+      const parsed = userListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid query', issues: parsed.error.issues });
+      }
+      const { sortBy, sortDirection } = parsed.data;
+      const sort = { [sortBy]: sortDirection === 'asc' ? 1 : -1 } as const;
+      const filter = buildUserListQuery(parsed.data);
       const { limit, offset } = parsePagination(req.query);
       const [users, total] = await Promise.all([
-        findUsers({}, USER_LIST_FIELDS, { limit, offset, sort: { createdAt: -1 } }),
-        countUsers(),
+        findUsers(filter, USER_LIST_FIELDS, { limit, offset, sort }),
+        countUsers(filter),
       ]);
 
       const mapped: AdminUserListItem[] = users.map((u) => ({
@@ -131,8 +164,7 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
       }
 
       const searchLimit = Math.min(Math.max(1, parseInt(limitStr, 10) || 20), 50);
-      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`^${escaped}`, 'i');
+      const regex = new RegExp(`^${escapeRegExp(trimmed)}`, 'i');
 
       const users = await findUsers(
         { $or: [{ name: regex }, { email: regex }, { username: regex }] },

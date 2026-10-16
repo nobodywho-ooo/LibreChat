@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
-import { BarChart3, MessagesSquare } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { BarChart3, MessagesSquare, Users } from 'lucide-react';
 import { useUserKeyQuery } from 'librechat-data-provider/react-query';
 import { getConfigDefaults, getEndpointField, SystemRoles } from 'librechat-data-provider';
 import type { TEndpointsConfig } from 'librechat-data-provider';
@@ -68,27 +68,47 @@ export default function useUnifiedSidebarLinks() {
       Component: ConversationsSection,
     };
 
-    if (!insightsFeatureEnabled || insightsAccess?.access !== true) {
-      return [conversationLink, ...sideNavLinks];
+    const nextLinks = [...sideNavLinks];
+    const mcpIndex = nextLinks.findIndex((link) => link.id === 'mcp-builder');
+    let insertAt = mcpIndex >= 0 ? mcpIndex + 1 : nextLinks.length;
+
+    if (insightsFeatureEnabled && insightsAccess?.access === true) {
+      nextLinks.splice(insertAt++, 0, {
+        title: 'com_insights_navigation',
+        label: '',
+        icon: BarChart3,
+        id: 'insights',
+        onClick: () => {
+          if (!location.pathname.startsWith('/insights')) {
+            navigate('/insights');
+          }
+        },
+      });
     }
 
-    const insightsLink: NavLink = {
-      title: 'com_insights_navigation',
-      label: '',
-      icon: BarChart3,
-      id: 'insights',
-      onClick: () => {
-        if (!location.pathname.startsWith('/insights')) {
-          navigate('/insights');
-        }
-      },
-    };
-    const mcpIndex = sideNavLinks.findIndex((link) => link.id === 'mcp-builder');
-    const nextLinks = [...sideNavLinks];
-    nextLinks.splice(mcpIndex >= 0 ? mcpIndex + 1 : nextLinks.length, 0, insightsLink);
+    if (user?.role === SystemRoles.ADMIN) {
+      nextLinks.splice(insertAt, 0, {
+        title: 'com_admin_users_title',
+        label: '',
+        icon: Users,
+        id: 'users',
+        onClick: () => {
+          if (!location.pathname.startsWith('/users')) {
+            navigate('/users');
+          }
+        },
+      });
+    }
 
     return [conversationLink, ...nextLinks];
-  }, [insightsAccess?.access, insightsFeatureEnabled, location.pathname, navigate, sideNavLinks]);
+  }, [
+    insightsAccess?.access,
+    insightsFeatureEnabled,
+    location.pathname,
+    navigate,
+    sideNavLinks,
+    user?.role,
+  ]);
 
   return links;
 }

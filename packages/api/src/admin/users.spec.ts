@@ -114,7 +114,69 @@ describe('createAdminUsersHandlers', () => {
         offset: 20,
         sort: { createdAt: -1 },
       });
-      expect(countUsers).toHaveBeenCalledWith();
+      expect(countUsers).toHaveBeenCalledWith({});
+    });
+
+    it('applies search, role, provider, and sort to both find and count', async () => {
+      const findUsers = jest.fn().mockResolvedValue([]);
+      const countUsers = jest.fn().mockResolvedValue(0);
+      const handlers = createAdminUsersHandlers(createDeps({ findUsers, countUsers }));
+      const { req, res, status } = createReqRes({
+        query: {
+          search: 'a.b',
+          role: 'ADMIN',
+          provider: 'openid',
+          sortBy: 'name',
+          sortDirection: 'asc',
+        },
+      });
+
+      await handlers.listUsers(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+      const regex = /a\.b/i;
+      const filter = {
+        $or: [{ name: regex }, { email: regex }, { username: regex }],
+        role: 'ADMIN',
+        provider: 'openid',
+      };
+      expect(findUsers).toHaveBeenCalledWith(filter, expect.any(String), {
+        limit: 50,
+        offset: 0,
+        sort: { name: 1 },
+      });
+      expect(countUsers).toHaveBeenCalledWith(filter);
+    });
+
+    it('falls back to newest first for an unknown sort field', async () => {
+      const findUsers = jest.fn().mockResolvedValue([]);
+      const handlers = createAdminUsersHandlers(createDeps({ findUsers }));
+      const { req, res } = createReqRes({ query: { sortBy: 'password', sortDirection: 'asc' } });
+
+      await handlers.listUsers(req, res);
+
+      expect(findUsers.mock.calls[0][2].sort).toEqual({ createdAt: 1 });
+    });
+
+    it('returns 400 when a filter is not a string', async () => {
+      const findUsers = jest.fn();
+      const handlers = createAdminUsersHandlers(createDeps({ findUsers }));
+      const { req, res, status } = createReqRes();
+      (req.query as Record<string, unknown>).role = { $ne: 'USER' };
+
+      await handlers.listUsers(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(findUsers).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when search is too long', async () => {
+      const handlers = createAdminUsersHandlers(createDeps());
+      const { req, res, status } = createReqRes({ query: { search: 'x'.repeat(201) } });
+
+      await handlers.listUsers(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
     });
 
     it('returns empty list when no users', async () => {

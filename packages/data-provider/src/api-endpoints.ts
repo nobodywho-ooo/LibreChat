@@ -535,6 +535,8 @@ export const conversationTraceRecord = (
     { message: messageId, ...(sourceId ? { source: sourceId } : {}) },
   ).toString()}`;
 
+export const adminUsers = () => `${BASE_URL}/api/admin/users`;
+
 export const adminSkillsSync = () => `${BASE_URL}/api/admin/skills/sync`;
 export const adminSkillsSyncStatus = () => `${adminSkillsSync()}/status`;
 export const adminSkillsSyncRun = () => `${adminSkillsSync()}/run`;

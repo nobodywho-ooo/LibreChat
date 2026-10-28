@@ -1,0 +1,53 @@
+{
+  "projectId": "e039837a-fc38-427f-8176-3cfd5248766a",
+  "shape": "package",
+  "pkg": "@librechat/client",
+  "globalName": "LibreChatClient",
+  "buildCmd": "npm run build:data-provider && npm run build:client-package && node .design-sync/prepare.mjs",
+  "cssEntry": ".ds-brand/brand.css",
+  "tsconfig": "tsconfig.json",
+  "overrides": {
+    "OGDialog": {
+      "cardMode": "single",
+      "viewport": "720x420"
+    },
+    "AlertDialog": {
+      "cardMode": "single",
+      "viewport": "720x420"
+    },
+    "OGDialogTemplate": {
+      "cardMode": "single",
+      "viewport": "720x420"
+    },
+    "DropdownMenu": {
+      "cardMode": "single",
+      "viewport": "480x340"
+    },
+    "HoverCard": {
+      "cardMode": "single",
+      "viewport": "480x220"
+    },
+    "Select": {
+      "cardMode": "single",
+      "primaryStory": "Open"
+    },
+    "EmptyState": {
+      "cardMode": "column"
+    },
+    "Radio": {
+      "cardMode": "column"
+    },
+    "Textarea": {
+      "cardMode": "column"
+    }
+  },
+  "extraEntries": ["../../.design-sync/i18n.ts"],
+  "dtsPropsFor": {
+    "Combobox": "ariaLabel: string; selectedValue: string; displayValue?: string; items: string[] | { label?: string; value?: string | null; icon?: React.ReactNode }[]; setValue: (value: string) => void; isCollapsed: boolean; searchPlaceholder?: string; selectPlaceholder?: string; SelectIcon?: React.ReactNode;"
+  },
+  "componentSrcMap": {
+    "ThemeSelector": null,
+    "VirtualizedDataTable": null
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

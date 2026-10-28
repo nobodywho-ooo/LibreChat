@@ -26,6 +26,7 @@ import useSidebarToggle from '~/hooks/Nav/useSidebarToggle';
 import useSidebarState from '~/hooks/Nav/useSidebarState';
 import { useChatHelpers, useLocalize } from '~/hooks';
 import SidePanelNav from '~/components/SidePanel/Nav';
+import { getPageRouteId } from '~/utils/pageRoutes';
 import Sidebar from './Sidebar';
 import { cn } from '~/utils';
 
@@ -74,7 +75,8 @@ function UnifiedSidebar({
   const resizeHandlers = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null);
 
   const links = useUnifiedSidebarLinks();
-  const isInsightsRoute = location.pathname.startsWith('/insights');
+  const pageRouteId = getPageRouteId(location.pathname);
+  const isInsightsRoute = pageRouteId != null;
   const panelExpanded = expanded && !isInsightsRoute;
 
   /** The aside's max width is a viewport percentage, so the announced range has to track
@@ -251,7 +253,7 @@ function UnifiedSidebar({
             onNewChat={handleCollapse}
             switchToHistory={switchToHistory}
             onLeaveInsights={handleLeaveInsights}
-            routeActiveId={isInsightsRoute ? 'insights' : undefined}
+            routeActiveId={pageRouteId}
           />
           {/* Above the panel rather than inside it: the marketplace is a
               destination like the panels themselves, not a row of whichever
@@ -269,7 +271,7 @@ function UnifiedSidebar({
           <MobileShortcutTargets
             links={links}
             onLeaveInsights={handleLeaveInsights}
-            routeActiveId={isInsightsRoute ? 'insights' : undefined}
+            routeActiveId={pageRouteId}
           />
           <MobileBottomBar links={links} />
         </ActivePanelProvider>

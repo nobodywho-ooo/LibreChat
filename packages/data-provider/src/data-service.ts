@@ -8,6 +8,7 @@ import type {
 } from './types/traces';
 import type { TInsightsAccessResponse, TInsightsParams, TInsightsResponse } from './types/insights';
 import type { ScheduleMCPConsentView, ConfirmScheduleMCPConsent } from './types/scheduleConsent';
+import type { TAdminUsersParams, TAdminUsersResponse } from './types/adminUsers';
 import type { TFileConfig } from './file-config';
 import type * as tl from './types/tools';
 import type * as t from './types';
@@ -70,6 +71,17 @@ export function getConversationTraceRecord(
     endpoints.conversationTraceRecord(conversationId, recordId, messageId, sourceId),
     signal ? { signal } : undefined,
   );
+}
+
+export function getAdminUsers(params: TAdminUsersParams = {}): Promise<TAdminUsersResponse> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request.get(`${endpoints.adminUsers()}${suffix}`);
 }
 
 export function getLangfuseConnection(): Promise<t.TLangfuseConnectionStatus> {

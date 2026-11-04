@@ -62,6 +62,7 @@ export type {
   OutputProtectionResult,
   OutputProtectionAudit,
 } from './types/protection';
+export * from './types/adminUsers';
 export * from './types/subagents';
 export * from './types/background';
 export * from './types/pullRequest';

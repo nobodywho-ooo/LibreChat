@@ -15,6 +15,7 @@ import { PanelFooter, PanelContent, PanelHeader } from '~/components/ui';
 import MCPConfigDialog from '~/components/MCP/MCPConfigDialog';
 import MCPServerCardSkeleton from './MCPServerCardSkeleton';
 import { useMCPRefresh } from '~/hooks/MCP/useMCPRefresh';
+import { getPageRouteId } from '~/utils/pageRoutes';
 import MCPAdminSettings from './MCPAdminSettings';
 import MCPServerDialog from './MCPServerDialog';
 import MCPServerList from './MCPServerList';
@@ -28,7 +29,7 @@ export default function MCPBuilderPanel() {
    * drawer, or the insights route collapsing it), so only a visible panel
    * releases its catalog ahead of the background warmup schedule */
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
-  const panelVisible = sidebarExpanded && !location.pathname.startsWith('/insights');
+  const panelVisible = sidebarExpanded && !getPageRouteId(location.pathname);
   useEffect(() => {
     if (panelVisible) {
       activateCatalog('mcpServers');

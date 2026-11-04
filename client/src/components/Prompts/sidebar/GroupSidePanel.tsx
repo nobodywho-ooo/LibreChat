@@ -6,6 +6,7 @@ import type { PromptGroupListResponse } from 'librechat-data-provider';
 import { useLocalize, useNavScrolling, activateCatalog } from '~/hooks';
 import PromptGroupSkeleton from '../lists/PromptGroupSkeleton';
 import { usePromptGroupsContext } from '~/Providers';
+import { getPageRouteId } from '~/utils/pageRoutes';
 import { PanelContent } from '~/components/ui';
 import List from '../lists/List';
 import { cn } from '~/utils';
@@ -37,7 +38,7 @@ export default function GroupSidePanel({
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
   /** Mirrors UnifiedSidebar's panelExpanded: the insights route collapses the
    * panel while the atom stays true, so visibility is atom AND route */
-  const panelVisible = sidebarExpanded && !location.pathname.startsWith('/insights');
+  const panelVisible = sidebarExpanded && !getPageRouteId(location.pathname);
 
   /** The panel stays mounted while hidden, so only a visible panel releases
    * its catalog ahead of the background warmup schedule */

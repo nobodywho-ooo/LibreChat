@@ -2629,6 +2629,7 @@ export async function createRun({
       clientOptions: llmConfig,
       instructions: systemContent,
       additional_instructions: additionalInstructions || undefined,
+      dynamicInstructionsPlacement: appConfig?.endpoints?.agents?.dynamicInstructionsPlacement,
       name: agent.name ?? undefined,
       toolRegistry,
       maxContextTokens: effectiveMaxContextTokens,

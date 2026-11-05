@@ -743,6 +743,10 @@ endpoints:
   #   # (optional) Text added to every agent's instructions. Special variables such as
   #   # {{current_datetime}} are filled in each turn, in the user's timezone.
   #   globalInstructions: 'The current date and time is {{current_datetime}}.'
+  #   # (optional) Where dynamic instructions (e.g. the date/time line above) go for providers
+  #   # without prompt-cache handling: `system` (default) or `beforeLastUser`, a user message
+  #   # before the latest user message that keeps the history cacheable for vLLM.
+  #   dynamicInstructionsPlacement: beforeLastUser
   #   # (optional) When conversation titles are generated:
   #   #   immediate (default): generate as soon as the request is made, in parallel
   #   #     with the response, from the user's first message (title appears within ~1-2s).

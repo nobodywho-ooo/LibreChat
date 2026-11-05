@@ -740,6 +740,9 @@ endpoints:
   #     create_file: 131072
   #   # (optional) Disable the builder interface for agents
   #   disableBuilder: false
+  #   # (optional) Text added to every agent's instructions. Special variables such as
+  #   # {{current_datetime}} are filled in each turn, in the user's timezone.
+  #   globalInstructions: 'The current date and time is {{current_datetime}}.'
   #   # (optional) When conversation titles are generated:
   #   #   immediate (default): generate as soon as the request is made, in parallel
   #   #     with the response, from the user's first message (title appears within ~1-2s).

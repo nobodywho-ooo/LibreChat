@@ -2241,6 +2241,38 @@ describe('initializeAgent — stable and dynamic instruction fields', () => {
     );
   });
 
+  it('appends temporal global instructions to the dynamic tail in the request timezone', async () => {
+    const { agent, req, res, loadTools, db } = createMocks();
+    agent.instructions = 'You are a helpful agent.';
+    req.config = {
+      endpoints: {
+        [EModelEndpoint.agents]: {
+          globalInstructions: 'The current date and time is {{current_datetime}}.',
+        },
+      },
+    } as never;
+    req.turnStartedAt = new Date('2024-01-15T18:30:00.000Z').getTime();
+    req.body = { timezone: 'America/New_York' };
+
+    const result = await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        allowedProviders: new Set([Providers.OPENAI]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    expect(result.instructions).toBe('You are a helpful agent.');
+    expect(result.additional_instructions).toBe(
+      'The current date and time is 2024-01-15 13:30:00 -05:00 (Monday).',
+    );
+  });
+
   it('keeps non-temporal special vars in stable instructions', async () => {
     const { agent, req, res, loadTools, db } = createMocks();
     agent.instructions = 'You are helping {{current_user}}.';

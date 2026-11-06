@@ -1699,6 +1699,16 @@ export const agentsEndpointSchema = baseEndpointSchema
       /** Graph steps an agent run may take; a run with fewer than 1 cannot take a step. */
       recursionLimit: z.number().int().min(1).optional(),
       disableBuilder: z.boolean().optional().default(false),
+      /** Operator text added to every agent's instructions (saved, model-spec and
+       * subagents). Special vars such as `{{current_datetime}}` are resolved per turn
+       * in the user's timezone; temporal ones keep the text out of the stable prefix. */
+      globalInstructions: z.string().optional(),
+      /** Where dynamic instructions (temporal `globalInstructions`, skills catalog, ...) go
+       * for providers without prompt-cache handling. `system` (default) appends them to the
+       * system message; `beforeLastUser` sends them as a user message before the latest
+       * user message, so the history prefix stays stable for automatic prefix caching
+       * (vLLM). Implemented by `patches/@librechat+agents+*.patch`. */
+      dynamicInstructionsPlacement: z.enum(['system', 'beforeLastUser']).optional(),
       /** Optional workspace guidance acquisition budget, separate from command execution. */
       repositoryInstructions: z
         .object({

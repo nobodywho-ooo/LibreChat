@@ -2614,6 +2614,23 @@ export async function initializeAgent(
     }
   }
 
+  const globalInstructions = appConfig?.endpoints?.agents?.globalInstructions?.trim();
+  if (globalInstructions) {
+    const resolvedGlobalInstructions = replaceSpecialVars({
+      text: globalInstructions,
+      user: user ? (user as unknown as TUser) : null,
+      now: runtime.turnStartedAt,
+      timezone: runtime.requestBody.timezone,
+    });
+    if (hasTemporalSpecialVars(globalInstructions)) {
+      appendAdditionalInstructions(agent, resolvedGlobalInstructions);
+    } else {
+      agent.instructions = [agent.instructions, resolvedGlobalInstructions]
+        .filter(Boolean)
+        .join('\n\n');
+    }
+  }
+
   const repositoryInstructionBlock = repositoryInstructionSource
     ? await repositoryInstructionSource.load({
         ...repositoryInstructionSource,

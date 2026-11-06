@@ -806,6 +806,74 @@ describe('initializeAgent: ChatProject context', () => {
     expect(db.getProjectFiles).not.toHaveBeenCalled();
   });
 
+  describe('code-sandbox Project files', () => {
+    const realResources = jest.requireActual<typeof import('../resources')>('../resources');
+    const codeFile = (file_id: string): ProjectFileRecord => ({
+      ...canonicalFile,
+      file_id,
+      filename: `${file_id}.pdf`,
+      filepath: `/uploads/${file_id}.pdf`,
+      type: 'application/pdf',
+      embedded: false,
+      metadata: { codeDestination: true },
+    });
+    const searchFile: ProjectFileRecord = { ...canonicalFile, file_id: 'project-search' };
+
+    async function initializeWithProject({ codeEnvAvailable }: { codeEnvAvailable: boolean }) {
+      jest.mocked(primeResources).mockImplementationOnce(realResources.primeResources);
+      const projectFiles = [codeFile('project-code'), searchFile];
+      const { agent, loadTools, db } = createMocks();
+      agent.tools = [Tools.execute_code, Tools.file_search];
+      const runtime = projectRuntime();
+      runtime.appConfig.endpoints![EModelEndpoint.agents]!.capabilities = [
+        AgentCapabilities.file_search,
+        AgentCapabilities.execute_code,
+      ];
+      runtime.chatProjectContext = {
+        ...projectContext,
+        file_ids: projectFiles.map((file) => file.file_id),
+        resources: projectFiles.map(toCanonicalProjectResource),
+      };
+      const getFiles = jest.fn().mockResolvedValue(projectFiles);
+      const result = await initializeAgent(
+        {
+          runtime,
+          agent,
+          loadTools,
+          allowedProviders: new Set([Providers.OPENAI]),
+          useChatProjectContext: true,
+          codeEnvAvailable,
+          fileSearchAvailable: true,
+        },
+        { ...db, getFiles },
+      );
+      return { result, getFiles };
+    }
+
+    it('provisions code-only Project files into the sandbox, not into search', async () => {
+      const { result, getFiles } = await initializeWithProject({ codeEnvAvailable: true });
+      const snapshotQuery = getFiles.mock.calls[0]?.[0] as { file_id: { $in: string[] } };
+      expect(snapshotQuery.file_id.$in).toContain('project-code');
+      expect(snapshotQuery.file_id.$in).not.toContain('project-search');
+      expect(result.provisionState?.codeEnvFiles.map((file) => file.file_id)).toEqual([
+        'project-code',
+      ]);
+      const searchFileIds = (
+        result.tool_resources?.[EToolResources.file_search]?.files ?? []
+      ).map((file) => file.file_id);
+      expect(searchFileIds).toContain('project-search');
+      expect(searchFileIds).not.toContain('project-code');
+    });
+
+    it('leaves Project files out of the sandbox when code execution is unavailable', async () => {
+      const { result, getFiles } = await initializeWithProject({ codeEnvAvailable: false });
+      for (const [query] of getFiles.mock.calls) {
+        expect(JSON.stringify(query)).not.toContain('project-code');
+      }
+      expect(result.provisionState?.codeEnvFiles ?? []).toEqual([]);
+    });
+  });
+
   describe('retained Project repair endpoint policy', () => {
     const MB = 1024 * 1024;
     const realResources = jest.requireActual<typeof import('../resources')>('../resources');

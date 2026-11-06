@@ -11,6 +11,7 @@ import ProjectResources from './ProjectResources';
 
 const mockUploadMutateAsync = jest.fn();
 const mockCanUseFileSearch = jest.fn(() => true);
+const mockAgentCapabilities = jest.fn(() => ({ fileSearchEnabled: true, codeEnabled: false }));
 const mockAddMutateAsync = jest.fn();
 const mockRemoveMutateAsync = jest.fn();
 const mockRefetch = jest.fn();
@@ -83,7 +84,7 @@ jest.mock('~/data-provider', () => ({
 }));
 
 jest.mock('~/hooks', () => ({
-  useAgentCapabilities: () => ({ fileSearchEnabled: true }),
+  useAgentCapabilities: () => mockAgentCapabilities(),
   useGetAgentsConfig: () => ({ agentsConfig: { capabilities: ['file_search'] } }),
   useHasAccess: () => mockCanUseFileSearch(),
   useAuthContext: () => ({ user: { id: 'user-1' } }),
@@ -165,6 +166,7 @@ describe('ProjectResources', () => {
       refetch: mockRefetch,
     };
     mockCanUseFileSearch.mockReturnValue(true);
+    mockAgentCapabilities.mockReturnValue({ fileSearchEnabled: true, codeEnabled: false });
     mockAddMutateAsync.mockResolvedValue({});
     mockRemoveMutateAsync.mockResolvedValue({});
   });
@@ -217,6 +219,61 @@ describe('ProjectResources', () => {
     expect(screen.queryByText('unsafe internal upload detail')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dismiss failed.txt upload' })).toBeInTheDocument();
   });
+  it('uploads to the code sandbox when code execution is available, even with search', async () => {
+    mockAgentCapabilities.mockReturnValue({ fileSearchEnabled: true, codeEnabled: true });
+    mockUploadMutateAsync.mockResolvedValue({
+      ...uploadedFile,
+      embedded: false,
+      metadata: {
+        codeEnvRef: {
+          kind: 'user',
+          id: 'user-1',
+          file_id: 'code-env-id',
+          storage_session_id: 'session-1',
+        },
+      },
+    } as unknown as TFileUpload);
+    renderResources();
+    fireEvent.change(screen.getByTestId('project-upload-input'), {
+      target: { files: [new File(['x'], 'deck.pptx')] },
+    });
+
+    await waitFor(() =>
+      expect(mockAddMutateAsync).toHaveBeenCalledWith({
+        projectId: 'project-1',
+        file_id: 'canonical-file-id',
+      }),
+    );
+    const formData = mockUploadMutateAsync.mock.calls[0][0] as FormData;
+    expect(formData.get('tool_resource')).toBe('execute_code');
+  });
+
+  it('allows device uploads with code execution alone and keeps search as the fallback', async () => {
+    mockAgentCapabilities.mockReturnValue({ fileSearchEnabled: false, codeEnabled: true });
+    mockUploadMutateAsync.mockResolvedValue({
+      ...uploadedFile,
+      embedded: false,
+      metadata: { codeDestination: true },
+    } as unknown as TFileUpload);
+    renderResources();
+    fireEvent.change(screen.getByTestId('project-upload-input'), {
+      target: { files: [new File(['x'], 'report.pdf')] },
+    });
+    await waitFor(() => expect(mockAddMutateAsync).toHaveBeenCalled());
+    cleanup();
+
+    mockUploadMutateAsync.mockClear();
+    mockAgentCapabilities.mockReturnValue({ fileSearchEnabled: true, codeEnabled: false });
+    mockUploadMutateAsync.mockResolvedValue(uploadedFile);
+    renderResources();
+    fireEvent.change(screen.getByTestId('project-upload-input'), {
+      target: { files: [new File(['x'], 'notes.txt')] },
+    });
+    await waitFor(() => expect(mockUploadMutateAsync).toHaveBeenCalled());
+    const formData = mockUploadMutateAsync.mock.calls[0][0] as FormData;
+    expect(formData.get('tool_resource')).toBe('file_search');
+  });
+
   it('reserves remaining capacity across overlapping multi-file selections', async () => {
     let finishFirstUpload!: (file: TFileUpload) => void;
     mockProjectQueryState = { ...mockProjectQueryState, data: undefined, isLoading: true };

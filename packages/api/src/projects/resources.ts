@@ -18,21 +18,37 @@ export type GetProjectFiles = (options: {
   includeContent?: boolean;
 }) => Promise<ReadonlyArray<ProjectFileRecord> | null>;
 
+type ProjectFileDestinations = {
+  embedded?: boolean;
+  metadata?: { searchDestination?: boolean; codeDestination?: boolean };
+};
+
+/** Whether a project file is meant for search: embedded, or flagged for search. */
+export function isChatProjectSearchFile(file: ProjectFileDestinations | null | undefined): boolean {
+  return file?.embedded === true || file?.metadata?.searchDestination === true;
+}
+
+/**
+ * Whether a project file is meant for the code sandbox. Records from `getProjectFiles`
+ * carry this as one normalised flag (`hasProjectFileCodeDestination` in data-schemas).
+ */
+export function isChatProjectCodeFile(file: ProjectFileDestinations | null | undefined): boolean {
+  return file?.metadata?.codeDestination === true;
+}
+
 /** Project resources are restricted to owner-scoped, unscoped message attachments. */
 export function getChatProjectFileAvailability(
   file:
-    | {
-        embedded?: boolean;
-        metadata?: { searchDestination?: boolean };
+    | (ProjectFileDestinations & {
         context?: string;
         expiredAt?: Date | number | string | null;
-      }
+      })
     | null
     | undefined,
 ): 'ready' | 'unavailable' {
   if (
     !file ||
-    (file.embedded !== true && file.metadata?.searchDestination !== true) ||
+    (!isChatProjectSearchFile(file) && !isChatProjectCodeFile(file)) ||
     file.context !== FileContext.message_attachment
   ) {
     return 'unavailable';
@@ -92,6 +108,7 @@ function canonicalResourceVersion(
         availability,
         embedded: file.embedded ?? null,
         searchDestination: file.metadata?.searchDestination ?? null,
+        codeDestination: file.metadata?.codeDestination ?? null,
         ...(file.metadata?.routingMimeType !== undefined
           ? { routingMimeType: file.metadata.routingMimeType }
           : {}),
@@ -160,7 +177,7 @@ type RuntimeFileSource = {
   user: string | { toString(): string };
   tenantId?: string;
   embedded?: boolean;
-  metadata?: { searchDestination?: boolean; routingMimeType?: string };
+  metadata?: { searchDestination?: boolean; routingMimeType?: string; codeDestination?: boolean };
   source?: string;
   storageKey?: string;
   storageRegion?: string;
@@ -187,7 +204,8 @@ export function toRuntimeFile(file: RuntimeFileSource): TFile {
     usage: file.usage,
     embedded: file.embedded === true,
     ...(file.metadata?.searchDestination !== undefined ||
-    file.metadata?.routingMimeType !== undefined
+    file.metadata?.routingMimeType !== undefined ||
+    file.metadata?.codeDestination === true
       ? {
           metadata: {
             ...(file.metadata.searchDestination !== undefined
@@ -196,6 +214,7 @@ export function toRuntimeFile(file: RuntimeFileSource): TFile {
             ...(file.metadata.routingMimeType !== undefined
               ? { routingMimeType: file.metadata.routingMimeType }
               : {}),
+            ...(file.metadata.codeDestination === true ? { codeDestination: true } : {}),
           },
         }
       : {}),

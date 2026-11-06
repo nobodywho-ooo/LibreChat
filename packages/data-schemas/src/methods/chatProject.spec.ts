@@ -14,6 +14,7 @@ import {
 } from './chatProject';
 import { tenantStorage } from '~/config/tenantContext';
 import { createModels } from '~/models';
+import { createFileMethods } from './file';
 
 jest.mock('~/config/winston', () => ({
   error: jest.fn(),
@@ -860,6 +861,53 @@ describe('persistent Project context', () => {
     await expect(
       methods.addChatProjectFile(owner, project._id!.toString(), 'foreign-repair'),
     ).rejects.toThrow('Project file unavailable');
+  });
+
+  it('accepts code-sandbox files without vectors and lists them as available', async () => {
+    const project = await methods.createChatProject(owner, { name: 'Sandbox' });
+    const id = project._id!.toString();
+    const ref = (fileId: string) => ({
+      kind: 'user' as const,
+      id: owner,
+      file_id: fileId,
+      storage_session_id: `session-${fileId}`,
+    });
+    await createReference('sandbox-ref', { embedded: false, metadata: { codeEnvRef: ref('a') } });
+    await createReference('sandbox-refs', {
+      embedded: false,
+      metadata: { codeEnvRefs: { default: ref('b') } },
+    });
+    await createReference('sandbox-cleared', {
+      embedded: false,
+      metadata: { codeDestination: true },
+    });
+    await createReference('sandbox-foreign', {
+      user: new mongoose.Types.ObjectId(otherOwner),
+      embedded: false,
+      metadata: { codeDestination: true },
+    });
+
+    const available = await createFileMethods(mongoose).getAvailableProjectFiles({ userId: owner });
+    const availableIds = available.files.map((file) => file.file_id);
+    expect(availableIds).toEqual(
+      expect.arrayContaining(['sandbox-ref', 'sandbox-refs', 'sandbox-cleared']),
+    );
+    expect(availableIds).not.toContain('sandbox-foreign');
+    for (const file of available.files.filter((f) => f.file_id.startsWith('sandbox-'))) {
+      expect(file.metadata).toEqual({ codeDestination: true });
+    }
+
+    for (const fileId of ['sandbox-ref', 'sandbox-refs', 'sandbox-cleared']) {
+      await methods.addChatProjectFile(owner, id, fileId);
+    }
+    expect((await methods.getChatProject(owner, id))?.file_ids).toEqual([
+      'sandbox-ref',
+      'sandbox-refs',
+      'sandbox-cleared',
+    ]);
+    await expect(methods.addChatProjectFile(owner, id, 'sandbox-foreign')).rejects.toThrow(
+      'Project file unavailable',
+    );
   });
 
   it('rejects unauthorized, agent-scoped, unindexed, missing and expired references', async () => {

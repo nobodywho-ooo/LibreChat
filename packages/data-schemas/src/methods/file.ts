@@ -1402,10 +1402,13 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
     if (legacyRef) {
       update['metadata.codeEnvRef'] = legacyRef;
     }
+    /* A sandbox copy is bookkeeping, not a content change, so it leaves `updatedAt` alone,
+     * as clearing one does. Project context keys hash `updatedAt`, and bumping it here
+     * would turn every provisioned Project file into a "project context changed" resume. */
     return File.findOneAndUpdate(
       { file_id },
       { $set: update, $unset: { expiresAt: '' } },
-      { new: true },
+      { new: true, timestamps: false },
     ).lean<IMongoFile>();
   }
 

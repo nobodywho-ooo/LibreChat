@@ -245,6 +245,42 @@ describe('ChatProject resource hydration', () => {
     expect(getChatProjectContextKey(after)).toBe(getChatProjectContextKey(before));
   });
 
+  it('preserves Project compatibility when a code file is provisioned to the sandbox', async () => {
+    const owner = new mongoose.Types.ObjectId().toString();
+    const methods = { ...createMethods(mongoose), getProjectFiles };
+    const fileId = 'sandbox-reference';
+    const ref = (session: string) => ({
+      kind: 'user' as const,
+      id: owner,
+      file_id: `sandbox-${session}`,
+      storage_session_id: session,
+    });
+    await File.create(
+      file(fileId, owner, {
+        embedded: false,
+        metadata: { codeEnvRef: ref('expired') },
+      } as Partial<IMongoFile>),
+    );
+    await File.updateOne(
+      { file_id: fileId },
+      { $set: { updatedAt: new Date('2020-01-01') } },
+      { timestamps: false },
+    );
+    const project = await methods.createChatProject(owner, { name: 'Sandbox reference' });
+    const projectId = project._id!.toString();
+    await methods.addChatProjectFile(owner, projectId, fileId);
+    const input = { userId: owner, requestedProjectId: projectId };
+    const before = await resolveChatProjectContext(input, methods);
+
+    /* Lazy provisioning writes a fresh ref mid-run; an approval resumed afterwards compares
+     * the key it paused with against this one. */
+    await methods.updateFileCodeEnvRef({ file_id: fileId, routeKey: 'default', ref: ref('live') });
+    const after = await resolveChatProjectContext(input, methods);
+
+    expect(after?.resources).toEqual([expect.objectContaining({ availability: 'ready' })]);
+    expect(getChatProjectContextKey(after)).toBe(getChatProjectContextKey(before));
+  });
+
   it('keeps cleared search destinations visible and honestly repairable', async () => {
     const owner = new mongoose.Types.ObjectId().toString();
     const methods = createMethods(mongoose);

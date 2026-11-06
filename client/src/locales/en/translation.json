@@ -2582,7 +2582,7 @@
   "com_ui_project_file_remove_error": "Could not remove this file from the project",
   "com_ui_project_files": "Files",
   "com_ui_project_files_error": "Could not load project files",
-  "com_ui_project_files_help": "Every chat in this project can read these files in full with code. With File Search, chats can also use relevant excerpts.",
+  "com_ui_project_files_help": "Chats in this project can read these files in full when Run Code is on.",
   "com_ui_project_files_retrieval_only": "Removing a file affects future messages, not chat history.",
   "com_ui_project_instructions": "Instructions",
   "com_ui_project_instructions_error": "Could not save project instructions",

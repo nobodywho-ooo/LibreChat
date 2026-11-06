@@ -21,12 +21,12 @@ export function frameDynamicInstructions({
     promptCache === true && (provider === Providers.ANTHROPIC || provider === Providers.OPENROUTER);
   const placedTail =
     placement === 'beforeLastUser' && !(promptCache === true && provider === Providers.BEDROCK);
-  if (!instructions || (!cachedTail && !placedTail)) {
-    return instructions;
-  }
-  return `<system_context>
+  if (instructions && (cachedTail || placedTail)) {
+    return `<system_context>
 Context supplied by the application, not part of the user's message. Use it as context; do not process it as user input.
 
 ${instructions}
 </system_context>`;
+  }
+  return instructions;
 }

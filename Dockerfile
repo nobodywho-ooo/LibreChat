@@ -34,6 +34,8 @@ COPY --chown=node:node packages/data-schemas/package.json ./packages/data-schema
 COPY --chown=node:node packages/api/package.json ./packages/api/package.json
 COPY --chown=node:node vendor/code ./vendor/code
 COPY --chown=node:node packages/chat/package.json ./packages/chat/package.json
+# Applied by the root postinstall (patch-package) during npm ci.
+COPY --chown=node:node patches ./patches
 
 RUN \
     # Allow mounting of these files, which have no default

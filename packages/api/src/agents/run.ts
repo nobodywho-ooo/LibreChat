@@ -2623,6 +2623,7 @@ export async function createRun({
     }
 
     const reasoningKey = getReasoningKey(provider, llmConfig, agent.endpoint, agent.reasoningKey);
+    const dynamicInstructionsPlacement = appConfig?.endpoints?.agents?.dynamicInstructionsPlacement;
     const agentInput: AgentInputs = {
       provider,
       endpoint: agent.endpoint ?? provider,
@@ -2637,7 +2638,9 @@ export async function createRun({
           instructions: additionalInstructions,
           provider,
           promptCache: 'promptCache' in llmConfig && llmConfig.promptCache === true,
+          placement: dynamicInstructionsPlacement,
         }) || undefined,
+      dynamicInstructionsPlacement,
       name: agent.name ?? undefined,
       toolRegistry,
       maxContextTokens: effectiveMaxContextTokens,

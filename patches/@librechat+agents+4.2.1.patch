@@ -1,0 +1,134 @@
+diff --git a/node_modules/@librechat/agents/dist/cjs/agents/AgentContext.cjs b/node_modules/@librechat/agents/dist/cjs/agents/AgentContext.cjs
+index 9dfd62c..b60c089 100644
+--- a/node_modules/@librechat/agents/dist/cjs/agents/AgentContext.cjs
++++ b/node_modules/@librechat/agents/dist/cjs/agents/AgentContext.cjs
+@@ -57,6 +57,7 @@ var AgentContext = class AgentContext {
+ 			...agentConfig,
+ 			compactionSemanticIndex: agentContext.compactionSemanticIndex
+ 		};
++		agentContext.dynamicInstructionsPlacement = agentConfig.dynamicInstructionsPlacement;
+ 		agentContext.subagentConfigs = subagentConfigs;
+ 		agentContext.maxSubagentDepth = maxSubagentDepth;
+ 		if (graphTools && graphTools.length > 0) agentContext.graphTools = [...require_resolveLocalExecutionTools.filterToolsByLocalAllowlist(graphTools, toolExecution) ?? []];
+@@ -355,7 +356,7 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 			return;
+ 		}
+ 		const promptCacheProvider = this.getPromptCacheProvider();
+-		const shouldMoveDynamicInstructions = promptCacheProvider != null && stableInstructions !== "" && dynamicInstructions !== "";
++		const shouldMoveDynamicInstructions = promptCacheProvider == null && this.forceDynamicTail() ? dynamicInstructions !== "" : promptCacheProvider != null && stableInstructions !== "" && dynamicInstructions !== "";
+ 		const systemMessage = this.buildSystemMessage({
+ 			stableInstructions,
+ 			dynamicInstructions,
+@@ -391,13 +392,17 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 		}] });
+ 	}
+ 	buildPromptCacheDynamicTail({ dynamicInstructions, hasSummaryBody, promptCacheProvider, shouldMoveDynamicInstructions }) {
+-		if (promptCacheProvider == null) return [];
++		if (promptCacheProvider == null) return shouldMoveDynamicInstructions ? [new _langchain_core_messages.HumanMessage(dynamicInstructions)] : [];
+ 		const dynamicTail = shouldMoveDynamicInstructions ? [new _langchain_core_messages.HumanMessage(dynamicInstructions)] : [];
+ 		if (!hasSummaryBody) return dynamicTail;
+ 		return [...dynamicTail, this.buildSummaryHumanMessage(void 0)];
+ 	}
+ 	buildBodyWithPromptCacheDynamicTail(messages, tail, promptCacheProvider) {
+ 		if (tail.length === 0) return messages;
++		if (promptCacheProvider == null) {
++			const index = this.getPromptCacheDynamicTailIndex(messages, promptCacheProvider);
++			return [...messages.slice(0, index), ...tail, ...messages.slice(index)];
++		}
+ 		const tailIndex = this._summaryLocation === "user_message" && this.summaryPrecedesMessages ? 0 : this.getPromptCacheDynamicTailIndex(messages, promptCacheProvider);
+ 		const stablePrefix = messages.slice(0, tailIndex);
+ 		const trailingMessages = messages.slice(tailIndex);
+@@ -423,6 +428,9 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 	addStablePromptCacheMarkers(messages, ttl) {
+ 		return [...require_cache.stripAnthropicCacheControl(messages.slice(0, 1)), ...require_cache.addCacheControlToStablePrefixMessages(messages.slice(1), 1, ttl)];
+ 	}
++	forceDynamicTail() {
++		return this.dynamicInstructionsPlacement === "beforeLastUser" && !this.hasBedrockPromptCache();
++	}
+ 	getPromptCacheProvider() {
+ 		if (this.provider === "anthropic") return this.clientOptions?.promptCache === true ? "anthropic" : void 0;
+ 		if (this.provider === "openrouter") return this.clientOptions?.promptCache === true ? "openrouter" : void 0;
+@@ -471,6 +479,7 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 			});
+ 			return new _langchain_core_messages.SystemMessage({ content });
+ 		}
++		if (shouldMoveDynamicInstructions && promptCacheProvider == null) return stableInstructions ? new _langchain_core_messages.SystemMessage(stableInstructions) : void 0;
+ 		return new _langchain_core_messages.SystemMessage([stableInstructions, dynamicInstructions].filter((part) => part !== "").join("\n\n"));
+ 	}
+ 	reset(options) {
+diff --git a/node_modules/@librechat/agents/dist/esm/agents/AgentContext.mjs b/node_modules/@librechat/agents/dist/esm/agents/AgentContext.mjs
+index 7aac11e..ce917a7 100644
+--- a/node_modules/@librechat/agents/dist/esm/agents/AgentContext.mjs
++++ b/node_modules/@librechat/agents/dist/esm/agents/AgentContext.mjs
+@@ -57,6 +57,7 @@ var AgentContext = class AgentContext {
+ 			...agentConfig,
+ 			compactionSemanticIndex: agentContext.compactionSemanticIndex
+ 		};
++		agentContext.dynamicInstructionsPlacement = agentConfig.dynamicInstructionsPlacement;
+ 		agentContext.subagentConfigs = subagentConfigs;
+ 		agentContext.maxSubagentDepth = maxSubagentDepth;
+ 		if (graphTools && graphTools.length > 0) agentContext.graphTools = [...filterToolsByLocalAllowlist(graphTools, toolExecution) ?? []];
+@@ -355,7 +356,7 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 			return;
+ 		}
+ 		const promptCacheProvider = this.getPromptCacheProvider();
+-		const shouldMoveDynamicInstructions = promptCacheProvider != null && stableInstructions !== "" && dynamicInstructions !== "";
++		const shouldMoveDynamicInstructions = promptCacheProvider == null && this.forceDynamicTail() ? dynamicInstructions !== "" : promptCacheProvider != null && stableInstructions !== "" && dynamicInstructions !== "";
+ 		const systemMessage = this.buildSystemMessage({
+ 			stableInstructions,
+ 			dynamicInstructions,
+@@ -391,13 +392,17 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 		}] });
+ 	}
+ 	buildPromptCacheDynamicTail({ dynamicInstructions, hasSummaryBody, promptCacheProvider, shouldMoveDynamicInstructions }) {
+-		if (promptCacheProvider == null) return [];
++		if (promptCacheProvider == null) return shouldMoveDynamicInstructions ? [new HumanMessage(dynamicInstructions)] : [];
+ 		const dynamicTail = shouldMoveDynamicInstructions ? [new HumanMessage(dynamicInstructions)] : [];
+ 		if (!hasSummaryBody) return dynamicTail;
+ 		return [...dynamicTail, this.buildSummaryHumanMessage(void 0)];
+ 	}
+ 	buildBodyWithPromptCacheDynamicTail(messages, tail, promptCacheProvider) {
+ 		if (tail.length === 0) return messages;
++		if (promptCacheProvider == null) {
++			const index = this.getPromptCacheDynamicTailIndex(messages, promptCacheProvider);
++			return [...messages.slice(0, index), ...tail, ...messages.slice(index)];
++		}
+ 		const tailIndex = this._summaryLocation === "user_message" && this.summaryPrecedesMessages ? 0 : this.getPromptCacheDynamicTailIndex(messages, promptCacheProvider);
+ 		const stablePrefix = messages.slice(0, tailIndex);
+ 		const trailingMessages = messages.slice(tailIndex);
+@@ -423,6 +428,9 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 	addStablePromptCacheMarkers(messages, ttl) {
+ 		return [...stripAnthropicCacheControl(messages.slice(0, 1)), ...addCacheControlToStablePrefixMessages(messages.slice(1), 1, ttl)];
+ 	}
++	forceDynamicTail() {
++		return this.dynamicInstructionsPlacement === "beforeLastUser" && !this.hasBedrockPromptCache();
++	}
+ 	getPromptCacheProvider() {
+ 		if (this.provider === "anthropic") return this.clientOptions?.promptCache === true ? "anthropic" : void 0;
+ 		if (this.provider === "openrouter") return this.clientOptions?.promptCache === true ? "openrouter" : void 0;
+@@ -471,6 +479,7 @@ The following tools are available exclusively through ${programmaticRunnerNames}
+ 			});
+ 			return new SystemMessage({ content });
+ 		}
++		if (shouldMoveDynamicInstructions && promptCacheProvider == null) return stableInstructions ? new SystemMessage(stableInstructions) : void 0;
+ 		return new SystemMessage([stableInstructions, dynamicInstructions].filter((part) => part !== "").join("\n\n"));
+ 	}
+ 	reset(options) {
+diff --git a/node_modules/@librechat/agents/dist/types/types/graph.d.ts b/node_modules/@librechat/agents/dist/types/types/graph.d.ts
+index f63c3bc..98c88ca 100644
+--- a/node_modules/@librechat/agents/dist/types/types/graph.d.ts
++++ b/node_modules/@librechat/agents/dist/types/types/graph.d.ts
+@@ -825,6 +825,13 @@ interface AgentInputFields {
+     langfuse?: LangfuseConfig;
+     /** Dynamic system tail appended after stable instructions without provider cache markers. */
+     additional_instructions?: string;
++    /**
++     * Where `additional_instructions` go when the provider has no prompt-cache handling.
++     * `system` (default) appends them to the system message; `beforeLastUser` sends them
++     * as a user message before the latest user message, keeping the history prefix stable
++     * for automatic prefix caching (e.g. vLLM). Added by LibreChat's patch-package patch.
++     */
++    dynamicInstructionsPlacement?: 'system' | 'beforeLastUser';
+     reasoningKey?: 'reasoning_content' | 'reasoning';
+     /** Format content blocks as strings (for legacy compatibility i.e. Ollama/Azure Serverless) */
+     useLegacyContent?: boolean;

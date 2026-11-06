@@ -1,34 +1,11 @@
 import { Providers } from '@librechat/agents';
 import type { TAgentsEndpoint } from 'librechat-data-provider';
 
-type DynamicInstructionsPlacement = TAgentsEndpoint['dynamicInstructionsPlacement'];
-
 /**
- * Whether the SDK sends dynamic instructions as a human message: cached Anthropic/OpenRouter
- * tails, and every provider under `beforeLastUser` except cached Bedrock, which keeps its
+ * The SDK relocates dynamic instructions into a human message for cached Anthropic/OpenRouter
+ * tails, and for every provider under `beforeLastUser` except cached Bedrock, which keeps its
  * own cache point inside the system message (see patches/@librechat+agents+*.patch).
  */
-function isRelocated({
-  provider,
-  promptCache,
-  placement,
-}: {
-  provider: string;
-  promptCache?: boolean;
-  placement?: DynamicInstructionsPlacement;
-}): boolean {
-  if (provider === Providers.ANTHROPIC || provider === Providers.OPENROUTER) {
-    if (promptCache === true) {
-      return true;
-    }
-  }
-  if (placement !== 'beforeLastUser') {
-    return false;
-  }
-  return !(provider === Providers.BEDROCK && promptCache === true);
-}
-
-/** Frames dynamic instructions the SDK relocates into a human message as application context. */
 export function frameDynamicInstructions({
   instructions,
   provider,
@@ -38,9 +15,13 @@ export function frameDynamicInstructions({
   instructions: string;
   provider: string;
   promptCache?: boolean;
-  placement?: DynamicInstructionsPlacement;
+  placement?: TAgentsEndpoint['dynamicInstructionsPlacement'];
 }): string {
-  if (!instructions || !isRelocated({ provider, promptCache, placement })) {
+  const cachedTail =
+    promptCache === true && (provider === Providers.ANTHROPIC || provider === Providers.OPENROUTER);
+  const placedTail =
+    placement === 'beforeLastUser' && !(promptCache === true && provider === Providers.BEDROCK);
+  if (!instructions || (!cachedTail && !placedTail)) {
     return instructions;
   }
   return `<system_context>

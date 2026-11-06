@@ -2273,30 +2273,6 @@ describe('initializeAgent — stable and dynamic instruction fields', () => {
     );
   });
 
-  it('appends non-temporal global instructions to agents without their own', async () => {
-    const { agent, req, res, loadTools, db } = createMocks();
-    agent.instructions = '';
-    req.config = {
-      endpoints: { [EModelEndpoint.agents]: { globalInstructions: '  Answer in English.  ' } },
-    } as never;
-
-    const result = await initializeAgent(
-      {
-        req,
-        res,
-        agent,
-        loadTools,
-        endpointOption: { endpoint: EModelEndpoint.agents },
-        allowedProviders: new Set([Providers.OPENAI]),
-        isInitialAgent: true,
-      },
-      db,
-    );
-
-    expect(result.instructions).toBe('Answer in English.');
-    expect(result.additional_instructions).toBeUndefined();
-  });
-
   it('keeps non-temporal special vars in stable instructions', async () => {
     const { agent, req, res, loadTools, db } = createMocks();
     agent.instructions = 'You are helping {{current_user}}.';

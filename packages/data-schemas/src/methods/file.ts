@@ -57,6 +57,66 @@ export type ClearFileEmbeddingsParams = {
 export const DEFAULT_AVAILABLE_PROJECT_FILES_LIMIT = 20;
 export const MAX_AVAILABLE_PROJECT_FILES_LIMIT = 50;
 
+/**
+ * A project file is meant for search (embedded, or flagged for search) or for the code
+ * sandbox (a sandbox reference, or the flag deletion keeps once those references are
+ * cleared). Code files reach chats through sandbox provisioning, so projects work on
+ * deployments without RAG.
+ */
+export const PROJECT_FILE_DESTINATION_CONDITIONS: FilterQuery<IMongoFile>[] = [
+  { embedded: true },
+  { 'metadata.searchDestination': true },
+  { 'metadata.codeEnvRef': { $exists: true } },
+  { 'metadata.codeEnvRefs': { $exists: true } },
+  { 'metadata.codeDestination': true },
+];
+
+/** The sandbox half of `PROJECT_FILE_DESTINATION_CONDITIONS`, for a loaded record. */
+export function hasProjectFileCodeDestination(
+  metadata:
+    | { codeDestination?: boolean; codeEnvRef?: unknown; codeEnvRefs?: unknown }
+    | null
+    | undefined,
+): boolean {
+  return (
+    metadata?.codeDestination === true || metadata?.codeEnvRef != null || metadata?.codeEnvRefs != null
+  );
+}
+
+/** Projection of the fields `hasProjectFileCodeDestination` reads. */
+const PROJECT_FILE_CODE_DESTINATION_FIELDS = {
+  'metadata.codeDestination': 1,
+  'metadata.codeEnvRef': 1,
+  'metadata.codeEnvRefs': 1,
+} as const;
+
+/** Normalised project file metadata: the sandbox references collapse to one stable flag. */
+function normalizeProjectFileMetadata(
+  metadata: IMongoFile['metadata'] | undefined,
+):
+  | { metadata: { searchDestination?: boolean; routingMimeType?: string; codeDestination?: boolean } }
+  | Record<string, never> {
+  const codeDestination = hasProjectFileCodeDestination(metadata);
+  if (
+    metadata?.searchDestination === undefined &&
+    metadata?.routingMimeType === undefined &&
+    !codeDestination
+  ) {
+    return {};
+  }
+  return {
+    metadata: {
+      ...(metadata?.searchDestination !== undefined
+        ? { searchDestination: metadata.searchDestination }
+        : {}),
+      ...(metadata?.routingMimeType !== undefined
+        ? { routingMimeType: metadata.routingMimeType }
+        : {}),
+      ...(codeDestination ? { codeDestination: true } : {}),
+    },
+  };
+}
+
 /** Plain projection of a candidate file. The picker's response crosses into `@librechat/api`
  * and the client, so this names no Mongoose type: `_id` and `user` are already strings here. */
 export type AvailableProjectFileRecord = {
@@ -69,7 +129,7 @@ export type AvailableProjectFileRecord = {
   bytes: number;
   usage: number;
   embedded?: boolean;
-  metadata?: { searchDestination?: boolean; routingMimeType?: string };
+  metadata?: { searchDestination?: boolean; routingMimeType?: string; codeDestination?: boolean };
   context?: string;
   user: string;
   tenantId?: string;
@@ -105,19 +165,7 @@ function normalizeAvailableProjectFileRecord(
     bytes: file.bytes,
     usage: file.usage,
     ...(file.embedded !== undefined ? { embedded: file.embedded } : {}),
-    ...(file.metadata?.searchDestination !== undefined ||
-    file.metadata?.routingMimeType !== undefined
-      ? {
-          metadata: {
-            ...(file.metadata.searchDestination !== undefined
-              ? { searchDestination: file.metadata.searchDestination }
-              : {}),
-            ...(file.metadata.routingMimeType !== undefined
-              ? { routingMimeType: file.metadata.routingMimeType }
-              : {}),
-          },
-        }
-      : {}),
+    ...normalizeProjectFileMetadata(file.metadata),
     ...(file.context !== undefined ? { context: file.context } : {}),
     user: file.user.toString(),
     ...(file.tenantId !== undefined ? { tenantId: file.tenantId } : {}),
@@ -147,7 +195,7 @@ export type ProjectFileRecord = {
   bytes: number;
   usage: number;
   embedded?: boolean;
-  metadata?: { searchDestination?: boolean; routingMimeType?: string };
+  metadata?: { searchDestination?: boolean; routingMimeType?: string; codeDestination?: boolean };
   source?: string;
   storageKey?: string;
   storageRegion?: string;
@@ -199,19 +247,7 @@ function normalizeProjectFileRecord(file: ProjectFileRecordSource): ProjectFileR
     bytes: file.bytes,
     usage: file.usage,
     ...(file.embedded !== undefined ? { embedded: file.embedded } : {}),
-    ...(file.metadata?.searchDestination !== undefined ||
-    file.metadata?.routingMimeType !== undefined
-      ? {
-          metadata: {
-            ...(file.metadata.searchDestination !== undefined
-              ? { searchDestination: file.metadata.searchDestination }
-              : {}),
-            ...(file.metadata.routingMimeType !== undefined
-              ? { routingMimeType: file.metadata.routingMimeType }
-              : {}),
-          },
-        }
-      : {}),
+    ...normalizeProjectFileMetadata(file.metadata),
     ...(file.source !== undefined ? { source: file.source } : {}),
     ...(file.storageKey !== undefined ? { storageKey: file.storageKey } : {}),
     ...(file.storageRegion !== undefined ? { storageRegion: file.storageRegion } : {}),
@@ -693,7 +729,7 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
     const query = File.find({
       file_id: { $in: fileIds },
       user: userId,
-      $or: [{ embedded: true }, { 'metadata.searchDestination': true }],
+      $or: PROJECT_FILE_DESTINATION_CONDITIONS,
       context: FileContext.message_attachment,
       // Mongo's null predicate matches explicit null and legacy missing tenant fields.
       tenantId: tenantId != null && tenantId !== '' ? tenantId : null,
@@ -713,6 +749,7 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
         embedded: 1,
         'metadata.searchDestination': 1,
         'metadata.routingMimeType': 1,
+        ...PROJECT_FILE_CODE_DESTINATION_FIELDS,
         source: 1,
         storageKey: 1,
         storageRegion: 1,
@@ -748,7 +785,7 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
       {
         user: userId,
         tenantId: tenantId != null && tenantId !== '' ? tenantId : null,
-        $or: [{ embedded: true }, { 'metadata.searchDestination': true }],
+        $or: PROJECT_FILE_DESTINATION_CONDITIONS,
         context: FileContext.message_attachment,
         $and: [{ $or: [{ expiredAt: null }, { expiredAt: { $gt: now } }] }],
       },
@@ -781,6 +818,7 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
         embedded: 1,
         'metadata.searchDestination': 1,
         'metadata.routingMimeType': 1,
+        ...PROJECT_FILE_CODE_DESTINATION_FIELDS,
         context: 1,
         user: 1,
         tenantId: 1,

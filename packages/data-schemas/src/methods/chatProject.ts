@@ -12,6 +12,7 @@ import { buildRetentionVisibilityFilter } from '~/utils/retention';
 import { isValidObjectIdString } from '~/utils/objectId';
 import { escapeRegExp } from '~/utils/string';
 import logger from '~/config/winston';
+import { PROJECT_FILE_DESTINATION_CONDITIONS } from './file';
 
 export type ChatProjectSortBy = 'name' | 'createdAt' | 'lastConversationAt';
 export type ChatProjectSortDirection = 'asc' | 'desc';
@@ -569,7 +570,7 @@ export function createChatProjectMethods(mongoose: typeof import('mongoose')): C
       tenantId: project.tenantId ?? null,
       context: FileContext.message_attachment,
       $and: [
-        { $or: [{ embedded: true }, { 'metadata.searchDestination': true }] },
+        { $or: PROJECT_FILE_DESTINATION_CONDITIONS },
         { $or: [{ expiredAt: null }, { expiredAt: { $gt: new Date() } }] },
       ],
     })

@@ -81,6 +81,8 @@ import {
   MAX_PRIMED_SKILLS_PER_TURN,
 } from './skills';
 import {
+  isChatProjectCodeFile,
+  isChatProjectSearchFile,
   resolveChatProjectFiles,
   resolveChatProjectPolicyFiles,
   toCanonicalProjectResource,
@@ -1867,6 +1869,47 @@ export async function initializeAgent(
     }
   }
 
+  /** Resolves the chat project's file resources once per request; the sandbox and the
+   *  search path below both read them. */
+  const loadChatProjectResources = async (): Promise<ResolvedChatProjectContext | null> => {
+    if (!shouldUseChatProjectContext || runtime.chatProjectContext == null || !requestFileOwnerScope) {
+      return null;
+    }
+    runtime.chatProjectContextResourcesPromise ??=
+      params.req?.chatProjectContextResourcesPromise ??
+      hydrateChatProjectContextResources(runtime.chatProjectContext, {
+        userId: requestFileOwnerScope.userId,
+        tenantId: requestFileOwnerScope.tenantId,
+        getProjectFiles: db.getProjectFiles,
+      });
+    if (params.req) {
+      params.req.chatProjectContextResourcesPromise = runtime.chatProjectContextResourcesPromise;
+    }
+    runtime.chatProjectContext = await runtime.chatProjectContextResourcesPromise;
+    if (params.req) {
+      params.req.chatProjectContext = runtime.chatProjectContext;
+    }
+    return runtime.chatProjectContext;
+  };
+
+  /* Project files meant for the code sandbox join the provisioning candidates, so every
+   * chat in a project finds them in /mnt/data without a vector store. They pass the same
+   * owner-scoped hydration, endpoint limits and content policy as earlier attachments. */
+  if (wantsCodeFiles && authorizedRunFiles === undefined) {
+    const projectContext = await loadChatProjectResources();
+    const known = new Set([...requestFileIds, ...toolFileIds, ...deferredProvisionFileIds]);
+    for (const resource of projectContext?.resources ?? []) {
+      if (
+        resource.availability === 'ready' &&
+        isChatProjectCodeFile(resource.file) &&
+        !known.has(resource.file_id)
+      ) {
+        known.add(resource.file_id);
+        deferredProvisionFileIds.push(resource.file_id);
+      }
+    }
+  }
+
   /**
    * Hydrate the complete candidate set through one owner-scoped, read-only
    * query. Some discovery queries intentionally omit file text; this snapshot
@@ -2011,25 +2054,14 @@ export async function initializeAgent(
       AgentCapabilities.file_search,
     );
   let projectRuntimeFiles: TFile[] = [];
-  if (canUseProjectFileSearch && runtime.chatProjectContext != null && requestFileOwnerScope) {
-    runtime.chatProjectContextResourcesPromise ??=
-      params.req?.chatProjectContextResourcesPromise ??
-      hydrateChatProjectContextResources(runtime.chatProjectContext, {
-        userId: requestFileOwnerScope.userId,
-        tenantId: requestFileOwnerScope.tenantId,
-        getProjectFiles: db.getProjectFiles,
-      });
-    if (params.req) {
-      params.req.chatProjectContextResourcesPromise = runtime.chatProjectContextResourcesPromise;
-    }
-    runtime.chatProjectContext = await runtime.chatProjectContextResourcesPromise;
-    if (params.req) {
-      params.req.chatProjectContext = runtime.chatProjectContext;
-    }
+  const searchProjectContext =
+    canUseProjectFileSearch && requestFileOwnerScope ? await loadChatProjectResources() : null;
+  if (searchProjectContext != null && requestFileOwnerScope) {
+    const projectContext = searchProjectContext;
     runtime.chatProjectFilesPromise ??=
       params.req?.chatProjectFilesPromise ??
       resolveRuntimeProjectFiles({
-        context: runtime.chatProjectContext,
+        context: projectContext,
         getProjectFiles: db.getProjectFiles,
         scope: requestFileOwnerScope,
         filters: appConfig?.filters,
@@ -2037,7 +2069,9 @@ export async function initializeAgent(
     if (params.req) {
       params.req.chatProjectFilesPromise = runtime.chatProjectFilesPromise;
     }
-    projectRuntimeFiles = await runtime.chatProjectFilesPromise;
+    /* Only files meant for search are searched; code-only project files reach the
+     * sandbox through provisioning above instead. */
+    projectRuntimeFiles = (await runtime.chatProjectFilesPromise).filter(isChatProjectSearchFile);
     runtime.chatProjectFiles = projectRuntimeFiles;
     if (params.req) {
       params.req.chatProjectFiles = projectRuntimeFiles;

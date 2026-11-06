@@ -88,14 +88,22 @@ function statusLabel(localize: LocalizeFunction, availability: TChatProjectFile[
     : localize('com_ui_project_file_unavailable');
 }
 
+/** Mirrors the server's project file rule: meant for search, or for the code sandbox. */
+const hasProjectDestination = (file: TFile) =>
+  file.embedded === true ||
+  file.metadata?.searchDestination === true ||
+  file.metadata?.codeDestination === true ||
+  file.metadata?.codeEnvRef != null ||
+  file.metadata?.codeEnvRefs != null;
+
 const isEligibleFile = (file: TFile) =>
-  file.embedded === true &&
+  hasProjectDestination(file) &&
   file.context === FileContext.message_attachment &&
   (!file.expiredAt || new Date(file.expiredAt).getTime() > Date.now());
 export default function ProjectResources({ project }: ProjectResourcesProps) {
   const localize = useLocalize();
   const { agentsConfig } = useGetAgentsConfig();
-  const { fileSearchEnabled } = useAgentCapabilities(
+  const { fileSearchEnabled, codeEnabled } = useAgentCapabilities(
     agentsConfig?.capabilities ?? defaultAgentCapabilities,
   );
   const { data: startupConfig } = useGetStartupConfig();
@@ -104,7 +112,17 @@ export default function ProjectResources({ project }: ProjectResourcesProps) {
     permissionType: PermissionTypes.FILE_SEARCH,
     permission: Permissions.USE,
   });
-  const canUploadFromDevice = fileSearchEnabled && canUseFileSearch;
+  const canRunCode = useHasAccess({
+    permissionType: PermissionTypes.RUN_CODE,
+    permission: Permissions.USE,
+  });
+  const canUploadToCode = codeEnabled && canRunCode;
+  const canUploadFromDevice = canUploadToCode || (fileSearchEnabled && canUseFileSearch);
+  /* Projects prefer the code sandbox: every chat in the project gets the whole files in
+   * /mnt/data, and no vector store is needed. Search is the fallback without code. */
+  const uploadToolResource = canUploadToCode
+    ? EToolResources.execute_code
+    : EToolResources.file_search;
   const { showToast } = useToastContext();
   const inputRef = useRef<HTMLInputElement>(null);
   const pickerMenuRef = useRef<HTMLButtonElement>(null);
@@ -263,10 +281,10 @@ export default function ProjectResources({ project }: ProjectResourcesProps) {
         formData.append('file_id', item.id);
         formData.append('endpoint', 'agents');
         formData.append('message_file', 'true');
-        formData.append('tool_resource', EToolResources.file_search);
+        formData.append('tool_resource', uploadToolResource);
         const uploaded = (await uploadFile.mutateAsync(formData)) as TFileUpload;
         if (!uploaded.file_id || !isEligibleFile(uploaded)) {
-          throw new Error('Uploaded file is not eligible for project search');
+          throw new Error('Uploaded file is not eligible for the project');
         }
         fileId = uploaded.file_id;
         setUploading((current) =>

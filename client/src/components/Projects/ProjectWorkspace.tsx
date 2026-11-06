@@ -3,7 +3,13 @@ import { useRecoilValue } from 'recoil';
 import * as Ariakit from '@ariakit/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDefaultLayout } from 'react-resizable-panels';
-import { Constants, QueryKeys } from 'librechat-data-provider';
+import {
+  Constants,
+  defaultAgentCapabilities,
+  Permissions,
+  PermissionTypes,
+  QueryKeys,
+} from 'librechat-data-provider';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -34,7 +40,14 @@ import {
   useProjectQuery,
 } from '~/data-provider';
 import ProjectInstructionsDialog from './ProjectInstructionsDialog';
-import { useElementSize, useLocalize, useNewConvo } from '~/hooks';
+import {
+  useAgentCapabilities,
+  useElementSize,
+  useGetAgentsConfig,
+  useHasAccess,
+  useLocalize,
+  useNewConvo,
+} from '~/hooks';
 import useDocumentDirection from '~/hooks/useDocumentDirection';
 import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import useDrawerViewport from '~/hooks/Nav/useDrawerViewport';
@@ -90,6 +103,17 @@ export default function ProjectWorkspace() {
   const { data: project, isLoading: isProjectLoading } = useProjectQuery(projectId);
   const { data: startupConfig } = useGetStartupConfig();
   const isRagEnabled = startupConfig?.ragEnabled === true;
+  const { agentsConfig } = useGetAgentsConfig();
+  const { codeEnabled } = useAgentCapabilities(
+    agentsConfig?.capabilities ?? defaultAgentCapabilities,
+  );
+  const canRunCode = useHasAccess({
+    permissionType: PermissionTypes.RUN_CODE,
+    permission: Permissions.USE,
+  });
+  /* Project files serve search (needs the RAG service) or the code sandbox (needs code
+   * execution); either one is enough to show and manage them. */
+  const hasProjectFiles = isRagEnabled || (codeEnabled && canRunCode);
   const conversation = useRecoilValue(store.conversationByIndex(0));
   const { newConversation } = useNewConvo();
   const activeProjectId = project?._id;
@@ -97,7 +121,7 @@ export default function ProjectWorkspace() {
 
   /** Panel sizes are a workspace-wide preference, so they persist per browser
    *  rather than per project; the files panel keys its own layout so hiding it
-   *  (no RAG service) does not overwrite the split used when it is present. */
+   *  (no RAG service and no code execution) does not overwrite the split used when it is present. */
   const direction = useDocumentDirection();
   const reversed = direction === 'rtl';
   const workspaceLayout = useDefaultLayout({
@@ -107,7 +131,7 @@ export default function ProjectWorkspace() {
   });
   const detailsLayout = useDefaultLayout({
     id: 'project-details-layout',
-    panelIds: isRagEnabled ? DETAILS_PANEL_IDS_WITH_FILES : DETAILS_PANEL_IDS,
+    panelIds: hasProjectFiles ? DETAILS_PANEL_IDS_WITH_FILES : DETAILS_PANEL_IDS,
     storage: localStorage,
   });
   const { ref: detailsGroupRef, height: detailsGroupHeight } = useElementSize<HTMLDivElement>();
@@ -362,7 +386,7 @@ export default function ProjectWorkspace() {
     </section>
   );
 
-  const filesSection = isRagEnabled ? (
+  const filesSection = hasProjectFiles ? (
     <ProjectResources key={project._id} project={project} />
   ) : null;
 

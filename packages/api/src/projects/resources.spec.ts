@@ -5,6 +5,8 @@ import { createModels, createMethods } from '@librechat/data-schemas';
 import type { IChatProject, IMongoFile, ProjectFileRecord } from '@librechat/data-schemas';
 import {
   getChatProjectFileAvailability,
+  isChatProjectCodeFile,
+  isChatProjectSearchFile,
   listChatProjectFileViews,
   resolveChatProjectFiles,
   resolveChatProjectPolicyFiles,
@@ -376,5 +378,115 @@ describe('ChatProject resource hydration', () => {
       { file_id: 'foreign', availability: 'unavailable' },
       { file_id: 'missing', availability: 'unavailable' },
     ]);
+  });
+
+  describe('code-sandbox project files', () => {
+    const codeEnvRef = (owner: string, fileId: string) => ({
+      kind: 'user' as const,
+      id: owner,
+      file_id: fileId,
+      storage_session_id: `session-${fileId}`,
+    });
+
+    it('makes sandbox files ready without vectors and reports one stable code flag', async () => {
+      const owner = new mongoose.Types.ObjectId().toString();
+      await File.create(
+        file('code-ref', owner, {
+          embedded: false,
+          metadata: { codeEnvRef: codeEnvRef(owner, 'code-ref') },
+        } as Partial<IMongoFile>),
+      );
+      await File.create(
+        file('code-refs', owner, {
+          embedded: false,
+          metadata: { codeEnvRefs: { default: codeEnvRef(owner, 'code-refs') } },
+        } as Partial<IMongoFile>),
+      );
+      await File.create(
+        file('code-cleared', owner, {
+          embedded: false,
+          metadata: { codeDestination: true },
+        } as Partial<IMongoFile>),
+      );
+      await File.create(file('neither', owner, { embedded: false }));
+
+      const project = {
+        file_ids: ['code-ref', 'code-refs', 'code-cleared', 'neither'],
+      } as Pick<IChatProject, 'file_ids'>;
+      const runtimeFiles = await resolveChatProjectFiles({
+        project,
+        userId: owner,
+        getProjectFiles,
+      });
+
+      expect(runtimeFiles.map((runtimeFile) => runtimeFile.file_id)).toEqual([
+        'code-ref',
+        'code-refs',
+        'code-cleared',
+      ]);
+      for (const runtimeFile of runtimeFiles) {
+        expect(runtimeFile.embedded).toBe(false);
+        // The volatile sandbox references collapse to one flag and never leak.
+        expect(runtimeFile.metadata).toEqual({ codeDestination: true });
+        expect(isChatProjectCodeFile(runtimeFile)).toBe(true);
+        expect(isChatProjectSearchFile(runtimeFile)).toBe(false);
+      }
+
+      const views = await listChatProjectFileViews({ project, userId: owner, getProjectFiles });
+      expect(views.map((view) => [view.file_id, view.availability])).toEqual([
+        ['code-ref', 'ready'],
+        ['code-refs', 'ready'],
+        ['code-cleared', 'ready'],
+        ['neither', 'unavailable'],
+      ]);
+    });
+
+    it('classifies search and code destinations independently', () => {
+      expect(isChatProjectSearchFile({ embedded: true })).toBe(true);
+      expect(isChatProjectSearchFile({ metadata: { searchDestination: true } })).toBe(true);
+      expect(isChatProjectCodeFile({ embedded: true })).toBe(false);
+      const both = { embedded: true, metadata: { codeDestination: true } };
+      expect(isChatProjectSearchFile(both)).toBe(true);
+      expect(isChatProjectCodeFile(both)).toBe(true);
+      expect(isChatProjectSearchFile(null)).toBe(false);
+      expect(isChatProjectCodeFile(undefined)).toBe(false);
+    });
+
+    it('keeps a sandbox file unavailable outside unscoped, unexpired message attachments', () => {
+      const owner = new mongoose.Types.ObjectId().toString();
+      const codeFile = (id: string, overrides: Partial<IMongoFile> = {}) =>
+        file(id, owner, {
+          embedded: false,
+          metadata: { codeDestination: true },
+          ...overrides,
+        } as Partial<IMongoFile>) as IMongoFile;
+      expect(getChatProjectFileAvailability(codeFile('ok'))).toBe('ready');
+      expect(
+        getChatProjectFileAvailability(codeFile('agent', { context: FileContext.agents })),
+      ).toBe('unavailable');
+      expect(
+        getChatProjectFileAvailability(codeFile('output', { context: FileContext.execute_code })),
+      ).toBe('unavailable');
+      expect(
+        getChatProjectFileAvailability(
+          codeFile('expired', { expiredAt: new Date(Date.now() - 1) }),
+        ),
+      ).toBe('unavailable');
+    });
+
+    it('changes the resource version when a file gains a code destination', async () => {
+      const owner = new mongoose.Types.ObjectId().toString();
+      await File.create(file('switch', owner));
+      const [before] = (await getProjectFiles({ fileIds: ['switch'], userId: owner })) ?? [];
+      await File.updateOne(
+        { file_id: 'switch' },
+        { $set: { 'metadata.codeDestination': true } },
+        { timestamps: false },
+      );
+      const [after] = (await getProjectFiles({ fileIds: ['switch'], userId: owner })) ?? [];
+      expect(toCanonicalProjectResource(before).version).not.toBe(
+        toCanonicalProjectResource(after).version,
+      );
+    });
   });
 });

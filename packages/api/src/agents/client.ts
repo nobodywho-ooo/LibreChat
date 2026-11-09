@@ -17,6 +17,7 @@ import type { BaseMessage } from '@librechat/agents/langchain/messages';
 import type { Agent, TMessage } from 'librechat-data-provider';
 import type { ServerRequest } from '~/types';
 import { getSafeErrorMetadata, mergeQuotedText, formatQuotesAsMarkdown } from '~/utils';
+import { isModelBoundAttachmentFile } from './attachments';
 import { ATTACHMENT_ONLY_TEXT } from '~/files/context';
 import Tokenizer from '~/utils/tokenizer';
 
@@ -97,12 +98,30 @@ export type FormattedMessageWithContent = {
 };
 
 /**
- * Substitutes stand-in text for a user turn that carries attachments but has
- * nothing the provider can see: file search and code environment files reach
- * the model out-of-band, so the content stays empty and Anthropic rejects the
- * message outright. Apply after the file-context and quote merges so a turn
- * that already gained inline content is left alone. The stored `message.text`
- * keeps its empty value, so the UI still renders the attachment on its own.
+ * Names a turn's attachments whose content is not in the prompt: files kept off
+ * the model path (`llmDeliveryPath: 'none'`), file search and code environment
+ * files. Without their names the model only learns that something is attached,
+ * and cannot pass a file to a tool that takes one (an MCP server that reads the
+ * user's uploads, say). Empty when every attachment is in the prompt.
+ */
+export function formatUnsentAttachmentsText(files?: TMessage['files'] | null): string {
+  const names = (files ?? [])
+    .filter(
+      (file) =>
+        !!file?.filename &&
+        !isModelBoundAttachmentFile(file as Parameters<typeof isModelBoundAttachmentFile>[0]),
+    )
+    .map((file) => `"${file.filename}"`);
+  return names.length > 0 ? `Attached file(s) not shown here: ${names.join(', ')}` : '';
+}
+
+/**
+ * Notes a user turn's attachments that reach the model out-of-band (file search,
+ * code environment, or kept off the model path), by name. An empty turn becomes
+ * stand-in text, because Anthropic rejects an empty user message outright; a
+ * turn with content gains the names ahead of it. Apply after the file-context and
+ * quote merges so a turn that already gained inline content keeps it. The stored
+ * `message.text` keeps its value, so the UI still renders the attachment on its own.
  *
  * Takes the turn's files rather than the message because the current turn does
  * not carry them yet: `BaseClient` assigns `userMessage.files` only after
@@ -116,11 +135,13 @@ export function applyAttachmentOnlyText(
     return;
   }
 
-  if (formattedMessage.content !== '') {
+  const unsent = formatUnsentAttachmentsText(files);
+  if (formattedMessage.content === '') {
+    formattedMessage.content = unsent ? `${ATTACHMENT_ONLY_TEXT}\n${unsent}` : ATTACHMENT_ONLY_TEXT;
     return;
   }
 
-  formattedMessage.content = ATTACHMENT_ONLY_TEXT;
+  prependContextText(formattedMessage, unsent);
 }
 
 /**

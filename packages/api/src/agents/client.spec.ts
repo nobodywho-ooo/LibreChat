@@ -549,4 +549,73 @@ describe('applyAttachmentOnlyText', () => {
 
     expect(message.content).toBe('');
   });
+
+  describe('names attachments that are not in the prompt', () => {
+    const report = {
+      file_id: 'f1',
+      filename: 'annual-report-2025.pdf',
+      source: 'local',
+      llmDeliveryPath: 'none',
+    };
+    const notes = {
+      file_id: 'f2',
+      filename: 'notes.txt',
+      source: 'local',
+      llmDeliveryPath: 'text',
+      text: 'Inline notes',
+    };
+    const sheet = {
+      file_id: 'f3',
+      filename: 'data.xlsx',
+      source: 'local',
+      metadata: { codeEnvRef: { kind: 'user', id: 'u1', storage_session_id: 's', file_id: 'c' } },
+    };
+    const files = (list: object[]) => list as unknown as TMessage['files'];
+
+    it('after the stand-in text of an empty turn', () => {
+      const message: FormattedMessageWithContent = { role: 'user', content: '' };
+
+      applyAttachmentOnlyText(message, files([report, sheet]));
+
+      expect(message.content).toBe(
+        `${ATTACHMENT_ONLY_TEXT}\nAttached file(s) not shown here: "annual-report-2025.pdf", "data.xlsx"`,
+      );
+    });
+
+    it('ahead of a turn the user typed', () => {
+      const message: FormattedMessageWithContent = {
+        role: 'user',
+        content: 'Run the due diligence',
+      };
+
+      applyAttachmentOnlyText(message, files([report]));
+
+      expect(message.content).toBe(
+        'Attached file(s) not shown here: "annual-report-2025.pdf"\nRun the due diligence',
+      );
+    });
+
+    it('ahead of array content, without editing the stored parts', () => {
+      const parts = [{ type: ContentTypes.TEXT, text: 'Compare them' }];
+      const message: FormattedMessageWithContent = { role: 'user', content: parts };
+
+      applyAttachmentOnlyText(message, files([report]));
+
+      expect(message.content).toEqual([
+        {
+          type: ContentTypes.TEXT,
+          text: 'Attached file(s) not shown here: "annual-report-2025.pdf"\nCompare them',
+        },
+      ]);
+      expect(parts).toEqual([{ type: ContentTypes.TEXT, text: 'Compare them' }]);
+    });
+
+    it('but not those whose text is in the prompt', () => {
+      const message: FormattedMessageWithContent = { role: 'user', content: 'Read my notes' };
+
+      applyAttachmentOnlyText(message, files([notes]));
+
+      expect(message.content).toBe('Read my notes');
+    });
+  });
 });

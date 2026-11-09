@@ -4022,6 +4022,34 @@ export const ocrSchema = z.object({
   strategy: z.nativeEnum(OCRStrategy).default(OCRStrategy.MISTRAL_OCR),
 });
 
+/** File extensions converted to Markdown when no `fileTypes` are configured. */
+export const DEFAULT_DOCUMENT_CONVERSION_FILE_TYPES = ['pdf', 'docx', 'pptx'] as const;
+
+/**
+ * Converts documents copied into the code environment to Markdown and uploads the result
+ * next to the original as `<name>.md`, so the model reads headings, tables and page
+ * markers instead of parsing the binary. Off unless configured. The converter is an HTTP
+ * service taking the raw file at `POST <baseURL>/v1/convert?filename=<name>` and answering
+ * `{ markdown }`. A failed conversion only skips the Markdown copy; the original is
+ * always uploaded.
+ */
+export const documentConversionSchema = z
+  .object({
+    baseURL: z.string().url(),
+    /** Extensions (without the dot) to convert. */
+    fileTypes: z
+      .array(z.string().min(1))
+      .optional()
+      .default([...DEFAULT_DOCUMENT_CONVERSION_FILE_TYPES]),
+    /** Longest a single conversion may take; a large PDF on CPU can take minutes. */
+    timeoutMs: z.number().int().positive().optional().default(900_000),
+    /** Larger files are uploaded without a Markdown copy. */
+    maxFileSizeMB: z.number().positive().optional().default(100),
+  })
+  .strict();
+
+export type TDocumentConversionConfig = z.infer<typeof documentConversionSchema>;
+
 export const balanceSchema = z
   .object({
     enabled: z.boolean().optional().default(false),
@@ -4466,6 +4494,7 @@ export const configSchema = z.object({
   cache: z.boolean().default(true),
   projects: chatProjectsConfigSchema,
   ocr: ocrSchema.optional(),
+  documentConversion: documentConversionSchema.optional(),
   webSearch: webSearchSchema.optional(),
   githubCompare: z
     .object({

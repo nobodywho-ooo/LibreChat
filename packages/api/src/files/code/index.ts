@@ -8,6 +8,7 @@ export * from './form';
 export * from './identity';
 export * from './image';
 export * from './inspection';
+export * from './markdown';
 export * from './preflight';
 export * from './priming';
 export * from './process';

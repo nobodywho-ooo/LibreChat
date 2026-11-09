@@ -38,6 +38,9 @@ const {
   getCodeFileContextLine,
   appendCodeFileContextLine,
   getUploadedCodeEnvFilename,
+  createMarkdownCompanions,
+  getCompanionCodeFiles,
+  getCompanionContextLines,
   checkCodeFileActive: checkIfActive,
   CODE_OUTPUT_PREFLIGHT_MAX_BYTES,
   CODE_OUTPUT_PREFLIGHT_MAX_COUNT,
@@ -760,6 +763,8 @@ const primeFiles = async (options) => {
     concurrency: uploadOptions.concurrency,
     signal,
   });
+  /** Names real files take in the sandbox; a Markdown version never shadows one. */
+  const selectedNames = new Set(selected.map(({ sandboxName }) => sandboxName));
   let reuploadFailures = 0;
   let requiredCodeFiles = 0;
   const reuploadFailureCategories = new Set();
@@ -785,7 +790,12 @@ const primeFiles = async (options) => {
      * codeapi can resolve sessionKey per-file (kind switch +
      * tenant prefix from auth context).
      */
-    const pushFile = (overrideSessionId, overrideId, destination = sandboxName) => {
+    const pushFile = (
+      overrideSessionId,
+      overrideId,
+      destination = sandboxName,
+      companionRef = sourceRef,
+    ) => {
       /* The sandbox holds the converted name, not the record's, so the mount path has
        * to follow the same rule provisioning uploaded under. */
       const contextLine = getCodeFileContextLine(
@@ -820,6 +830,13 @@ const primeFiles = async (options) => {
         kind: sourceRef.kind,
         ...(sourceRef.kind === 'skill' ? { version: sourceRef.version } : {}),
       });
+      /* The Markdown version of a document mounts next to it. */
+      files.push(...getCompanionCodeFiles(companionRef, selectedNames));
+      toolContext = appendCodeFileContextLine(
+        toolContext,
+        getCompanionContextLines(companionRef, destination, codeFileLocation, selectedNames),
+        codeFileLocation,
+      );
     };
 
     const reuploadFile = async () => {
@@ -891,15 +908,39 @@ const primeFiles = async (options) => {
              * upload preserves the resource identity, only the storage
              * pointer changes.
              */
+            const uploadedName = getUploadedCodeEnvFilename(uploaded, sandboxName);
+            /* A fresh copy needs a fresh Markdown version: the old one expired with it. */
+            const companions = await createMarkdownCompanions({
+              config: options.req.config?.documentConversion,
+              sandboxFilename: uploadedName,
+              openSource: () =>
+                getDownloadStream(options.req, resolveDownloadPath(file), { signal }),
+              upload: (stream, filename) =>
+                uploadCodeEnvFile({
+                  req: options.req,
+                  stream,
+                  filename,
+                  kind: sourceRef.kind,
+                  id: sourceRef.id,
+                  ...(sourceRef.kind === 'skill' ? { version: sourceRef.version } : {}),
+                  codeApiBaseUrl,
+                  executionProfile,
+                  bridgeWorkerId,
+                  signal,
+                }),
+              logger,
+              signal,
+            });
             const newRef = {
               kind: sourceRef.kind,
               id: sourceRef.id,
               storage_session_id: uploaded.storage_session_id,
               file_id: uploaded.file_id,
-              sandboxFilename: getUploadedCodeEnvFilename(uploaded, sandboxName),
+              sandboxFilename: uploadedName,
               executionProfile,
               ...(executionRouteKey !== executionProfile ? { executionRouteKey } : {}),
               ...(sourceRef.kind === 'skill' ? { version: sourceRef.version } : {}),
+              ...(companions ? { companions } : {}),
             };
 
             const updatedRefs = mergeCodeEnvRef(file.metadata, newRef);
@@ -917,7 +958,7 @@ const primeFiles = async (options) => {
           },
         });
         file.metadata = { ...file.metadata, ...mergeCodeEnvRef(file.metadata, newRef) };
-        pushFile(newRef.storage_session_id, newRef.file_id, newRef.sandboxFilename);
+        pushFile(newRef.storage_session_id, newRef.file_id, newRef.sandboxFilename, newRef);
         logger.debug(`[primeCodeFiles] file=${file.file_id} path=reupload-success`);
       } catch (error) {
         /* Cancellation is an operation outcome, not a recoverable per-file

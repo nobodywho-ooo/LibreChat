@@ -193,6 +193,9 @@ jest.mock('@librechat/api', () => {
     selectCodeFiles: jest.requireActual('@librechat/api').selectCodeFiles,
     getCodeFileInfo: jest.requireActual('@librechat/api').getCodeFileInfo,
     getUploadedCodeEnvFilename: jest.requireActual('@librechat/api').getUploadedCodeEnvFilename,
+    createMarkdownCompanions: jest.fn(async () => undefined),
+    getCompanionCodeFiles: jest.requireActual('@librechat/api').getCompanionCodeFiles,
+    getCompanionContextLines: jest.requireActual('@librechat/api').getCompanionContextLines,
     checkCodeFileActive: jest.requireActual('@librechat/api').checkCodeFileActive,
   };
 });
@@ -3268,6 +3271,113 @@ describe('Code Process', () => {
           }),
         }),
       );
+    });
+
+    it('mounts a fresh Markdown version after re-uploading an expired document', async () => {
+      const { createMarkdownCompanions } = require('@librechat/api');
+      const dbFile = { ...claimedFile(), filename: 'report.pdf', filepath: '/uploads/report.pdf' };
+      const { handleFileUpload } = setupReuploadMocks({});
+      handleFileUpload
+        .mockResolvedValueOnce({ storage_session_id: 'NEW_SESSION', file_id: 'NEW_ID' })
+        .mockResolvedValueOnce({ storage_session_id: 'MD_SESSION', file_id: 'MD_ID' });
+      getFiles.mockResolvedValue([dbFile]);
+      createMarkdownCompanions.mockImplementationOnce(async ({ sandboxFilename, upload }) => {
+        const uploaded = await upload('markdown-stream', `${sandboxFilename}.md`);
+        return [{ ...uploaded, sandboxFilename: `${sandboxFilename}.md` }];
+      });
+
+      const result = await primeClaimedFile(dbFile);
+
+      expect(createMarkdownCompanions).toHaveBeenCalledWith(
+        expect.objectContaining({ sandboxFilename: 'report.pdf' }),
+      );
+      expect(handleFileUpload).toHaveBeenLastCalledWith(
+        expect.objectContaining({ filename: 'report.pdf.md', kind: 'user', id: 'user-123' }),
+      );
+      expect(result.files).toEqual([
+        expect.objectContaining({ id: 'NEW_ID', name: 'report.pdf' }),
+        expect.objectContaining({
+          id: 'MD_ID',
+          storage_session_id: 'MD_SESSION',
+          resource_id: 'user-123',
+          name: 'report.pdf.md',
+        }),
+      ]);
+      expect(result.toolContext).toContain(
+        '/mnt/data/report.pdf.md (Markdown version of report.pdf)',
+      );
+      expect(mockCommitFileProvision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: expect.objectContaining({
+            ref: expect.objectContaining({
+              companions: [
+                {
+                  storage_session_id: 'MD_SESSION',
+                  file_id: 'MD_ID',
+                  sandboxFilename: 'report.pdf.md',
+                },
+              ],
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('mounts a stored Markdown version next to an active document, never over a real file', async () => {
+      const companion = { storage_session_id: 'MD_SESSION', file_id: 'MD_ID' };
+      const document = (overrides) => ({
+        ...claimedFile(),
+        filename: 'report.pdf',
+        filepath: '/uploads/report.pdf',
+        metadata: {
+          codeEnvRef: {
+            kind: 'user',
+            id: 'user-123',
+            storage_session_id: 'SESSION',
+            file_id: 'PDF_ID',
+            sandboxFilename: 'report.pdf',
+            companions: [{ ...companion, sandboxFilename: 'report.pdf.md' }],
+          },
+        },
+        ...overrides,
+      });
+      const { handleFileUpload } = setupReuploadMocks({});
+      mockAxios.mockResolvedValue({ data: { lastModified: new Date().toISOString() } });
+      const req = { user: { id: 'user-123', role: 'USER' } };
+
+      getFiles.mockResolvedValue([document()]);
+      const alone = await primeFiles({
+        req,
+        tool_resources: { execute_code: { file_ids: ['claimed-file'] } },
+        agentId: 'agent-id',
+      });
+      expect(handleFileUpload).not.toHaveBeenCalled();
+      expect(alone.files.map((file) => file.name)).toEqual(['report.pdf', 'report.pdf.md']);
+      expect(alone.toolContext).toContain('report.pdf.md (Markdown version of report.pdf)');
+
+      const uploadedMarkdown = {
+        ...claimedFile(),
+        file_id: 'user-markdown',
+        filename: 'report.pdf.md',
+        filepath: '/uploads/report.pdf.md',
+        metadata: {
+          codeEnvRef: {
+            kind: 'user',
+            id: 'user-123',
+            storage_session_id: 'SESSION',
+            file_id: 'USER_MD_ID',
+            sandboxFilename: 'report.pdf.md',
+          },
+        },
+      };
+      getFiles.mockResolvedValue([document(), uploadedMarkdown]);
+      const both = await primeFiles({
+        req,
+        tool_resources: { execute_code: { file_ids: ['claimed-file', 'user-markdown'] } },
+        agentId: 'agent-id',
+      });
+      expect(both.files.map((file) => file.id).sort()).toEqual(['PDF_ID', 'USER_MD_ID']);
+      expect(both.toolContext).not.toContain('Markdown version');
     });
 
     it('does not seed a remote pointer when its conditional commit is rejected', async () => {

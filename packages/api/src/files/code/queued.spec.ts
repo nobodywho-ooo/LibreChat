@@ -81,6 +81,27 @@ describe('queued code-file destinations', () => {
     expect(child.provisionState?.codeEnvDestinations?.get('shared')).toBe('data.csv');
   });
 
+  it('announces the Markdown version of a queued document', () => {
+    const current = agent('parent', [
+      file('doc', { filename: 'report.pdf', type: 'application/pdf' }),
+      file('csv'),
+    ]);
+    prepareQueuedCodeFileContext(current, [current], 'user-1', false, {
+      documentConversion: {
+        baseURL: 'http://docling:5001',
+        fileTypes: ['pdf'],
+        timeoutMs: 1000,
+        maxFileSizeMB: 1,
+      },
+    });
+    const note = current.dynamicToolContextMap?.queued_code_files as string;
+
+    expect(note).toMatch(
+      /\/mnt\/data\/report\.pdf \(attached by user\)\n\t- \/mnt\/data\/report\.pdf\.md \(Markdown version of report\.pdf/,
+    );
+    expect(note).not.toContain('data.csv.md');
+  });
+
   it('retains advertised paths after one file succeeds and another remains queued', () => {
     const current = agent('parent', [file('first'), file('second')]);
     prepareQueuedCodeFileContext(current, [current], 'user-1');

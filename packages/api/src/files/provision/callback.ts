@@ -8,6 +8,7 @@ import type { ProvisionToolContext } from '../code/queued';
 import type { FileProvisionStorage } from '../operations';
 import type { ServerRequest } from '~/types';
 import { createCodeApiRateLimitBudget, isCodeApiRateLimitError } from '~/utils';
+import { getCompanionCodeFiles } from '../code/markdown';
 import { withFileProvisioning } from '../operations';
 import { planCodeFileUploads } from '../code/queued';
 import { isCodeFileToolName } from '~/agents/tools';
@@ -250,6 +251,8 @@ export function createProvisionFilesCallback({
         provisionState.codeEnvDestinations.set(file.file_id, destination);
       }
       const queuedCodeFiles = uploads.map(({ file }) => file);
+      /* A Markdown version never takes the name of a file in this batch. */
+      const uploadNames = new Set(uploads.map(({ destination }) => destination));
       /** Every file in this tool-load batch shares one wait allowance. */
       const codeApiRateLimitBudget = createCodeApiRateLimitBudget(
         req.config?.endpoints?.agents?.codeApiMaxRetryWaitMs,
@@ -305,13 +308,19 @@ export function createProvisionFilesCallback({
               name: ref.sandboxFilename ?? file.filename,
               kind: ref.kind,
             } as CodeEnvFile;
-            const existingIndex = provisionedCodeFiles.findIndex(
-              (existing) => existing.id === codeFile.id && existing.name === codeFile.name,
-            );
-            if (existingIndex >= 0) {
-              provisionedCodeFiles[existingIndex] = codeFile;
-            } else {
-              provisionedCodeFiles.push(codeFile);
+            /* Its Markdown version, if one was made, mounts next to it. */
+            for (const entry of [
+              codeFile,
+              ...(getCompanionCodeFiles(ref, uploadNames) as CodeEnvFile[]),
+            ]) {
+              const existingIndex = provisionedCodeFiles.findIndex(
+                (existing) => existing.id === entry.id && existing.name === entry.name,
+              );
+              if (existingIndex >= 0) {
+                provisionedCodeFiles[existingIndex] = entry;
+              } else {
+                provisionedCodeFiles.push(entry);
+              }
             }
           }
         }),

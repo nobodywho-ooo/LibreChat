@@ -166,3 +166,22 @@ it.each([
   ).rejects.toBe(error);
   expect(clearFileCodeEnvRefs).not.toHaveBeenCalled();
 });
+
+it('deletes the Markdown version too, and does not let it block the original', async () => {
+  const { httpClient, clearFileCodeEnvRefs, remove } = setup();
+  httpClient.mockRejectedValueOnce(new Error('companion gone'));
+  const withCompanion: CodeEnvRef = {
+    ...ref,
+    companions: [
+      { storage_session_id: 'md-session', file_id: 'md-copy', sandboxFilename: 'report.pdf.md' },
+    ],
+  };
+  await expect(
+    remove(req, { file_id: 'stored-file', metadata: { codeEnvRefs: { default: withCompanion } } }),
+  ).resolves.toEqual({ deleted: true });
+  expect(httpClient.mock.calls.map(([options]) => options.url)).toEqual([
+    'https://code.example/files/md-session/md-copy?kind=user&id=owner',
+    'https://code.example/files/session/remote-copy?kind=user&id=owner',
+  ]);
+  expect(clearFileCodeEnvRefs).toHaveBeenCalledTimes(1);
+});

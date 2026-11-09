@@ -18,6 +18,19 @@ export const codeEnvRefSchema: Schema = new Schema(
     executionRouteKey: { type: String },
     provisionedAt: { type: Number },
     sandboxFilename: { type: String },
+    companions: {
+      type: [
+        new Schema(
+          {
+            storage_session_id: { type: String, required: true },
+            file_id: { type: String, required: true },
+            sandboxFilename: { type: String, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: undefined,
+    },
   },
   { _id: false },
 );

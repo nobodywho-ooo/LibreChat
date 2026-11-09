@@ -63,6 +63,20 @@ interface CodeEnvRefBase {
   provisionedAt?: number;
   /** Actual destination used when uploading this storage object. */
   sandboxFilename?: string;
+  /** Files derived from this one (its Markdown version), mounted wherever it is. */
+  companions?: CodeEnvCompanion[];
+}
+
+/**
+ * A file derived from a code-environment file, such as the Markdown version of an
+ * uploaded PDF. It is uploaded on its own, so it has its own storage session, but it
+ * shares the owner's resource identity (`kind`, `id`, `version`) and is re-created
+ * whenever the owner is uploaded again.
+ */
+export interface CodeEnvCompanion {
+  storage_session_id: string;
+  file_id: string;
+  sandboxFilename: string;
 }
 
 export type CodeExecutionProfile = 'default' | 'stateful';

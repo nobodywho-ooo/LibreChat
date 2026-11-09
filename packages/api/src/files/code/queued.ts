@@ -3,6 +3,7 @@ import type { TFile, TurnFileConsumers, AgentToolResources } from 'librechat-dat
 import type { CodeEnvFile } from '@librechat/agents';
 import type { CodeExecutionRoute } from '../provision/service';
 import type { CodeExecutionContext } from '~/agents/execution';
+import type { DocumentConversionConfig } from './markdown';
 import type { ProvisionState } from '~/agents/resources';
 import {
   claimCodeDestination,
@@ -10,7 +11,12 @@ import {
   reserveCodeDestination,
   sortCodeFilesByDestinationPriority,
 } from './destinations';
-import { appendCodeFileContextLine, getCodeFileContextLine, getCodeFileLocation } from './priming';
+import {
+  appendCodeFileContextLine,
+  getCodeFileContextLine,
+  getCodeFileLocation,
+  getPlannedCompanionContextLine,
+} from './priming';
 import { getCodeEnvUploadFilename } from './form';
 
 /** Shared file state used by prompt construction and lazy provisioning. */
@@ -178,6 +184,7 @@ export function prepareQueuedCodeFileContext(
   contexts: Iterable<ProvisionToolContext>,
   userId?: string,
   useAdvertisedNames = false,
+  options: { documentConversion?: DocumentConversionConfig } = {},
 ): void {
   const key = 'queued_code_files';
   if (agent.dynamicToolContextMap) delete agent.dynamicToolContextMap[key];
@@ -195,13 +202,29 @@ export function prepareQueuedCodeFileContext(
   const location = getCodeFileLocation(agent.codeExecutionContext);
   let context = '';
   const described = agent.provisionState.describedFileIds;
+  /* A Markdown version never takes the name of a file being staged. */
+  const plannedNames = new Set(uploads.map(({ destination }) => destination));
   for (const { file, destination } of uploads) {
     if (described?.has(file.file_id)) continue;
-    context = appendCodeFileContextLine(
-      context,
-      getCodeFileContextLine(file, agent.provisionState.agentScopedFileIds, destination, location),
+    const contextLine = getCodeFileContextLine(
+      file,
+      agent.provisionState.agentScopedFileIds,
+      destination,
       location,
     );
+    context = appendCodeFileContextLine(context, contextLine, location);
+    if (contextLine) {
+      context = appendCodeFileContextLine(
+        context,
+        getPlannedCompanionContextLine(
+          options.documentConversion,
+          destination,
+          location,
+          plannedNames,
+        ),
+        location,
+      );
+    }
   }
   if (!context) return;
   agent.dynamicToolContextMap ??= {};

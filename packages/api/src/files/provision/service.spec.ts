@@ -14,6 +14,12 @@ jest.mock('~/utils', () => ({
   logAxiosError: jest.fn(),
 }));
 
+const mockConvertPost = jest.fn();
+jest.mock('~/utils/axios', () => ({
+  ...jest.requireActual('~/utils/axios'),
+  createAxiosInstance: () => ({ post: mockConvertPost }),
+}));
+
 jest.mock('~/auth/codeapi', () => ({
   ...jest.requireActual('~/auth/codeapi'),
   getCodeApiAuthHeaders: (...args: unknown[]) => mockGetCodeApiAuthHeaders(...args),
@@ -253,6 +259,74 @@ describe('createProvisionService', () => {
         }),
       );
       expect(result.referenceSet.codeEnvRefs?.['stateful:abc']?.executionProfile).toBe('stateful');
+    });
+
+    describe('Markdown versions of documents', () => {
+      const documentConversion = {
+        baseURL: 'http://docling.test',
+        fileTypes: ['pdf'],
+        timeoutMs: 1000,
+        maxFileSizeMB: 1,
+      };
+      const route = {
+        baseUrl: 'http://stateful.test/v1',
+        executionProfile: 'stateful' as const,
+        executionRouteKey: 'stateful:abc',
+      };
+      const setup = () => {
+        const built = buildService();
+        built.getDownloadStream.mockImplementation(async () =>
+          Readable.from([Buffer.from('%PDF')]),
+        );
+        built.uploadCodeEnvFile
+          .mockResolvedValueOnce({ storage_session_id: 's1', file_id: 'remote-1' })
+          .mockResolvedValueOnce({ storage_session_id: 's2', file_id: 'remote-md' });
+        return built;
+      };
+      const provision = (service: ReturnType<typeof buildService>['service']) =>
+        service.provisionToCodeEnv({
+          req: { ...req, config: { documentConversion } } as unknown as ServerRequest,
+          file: makeFile({ filename: 'report.pdf', type: 'application/pdf' }),
+          route,
+        });
+
+      it('uploads it on the same route and identity, and records it on the ref', async () => {
+        mockConvertPost.mockResolvedValue({ status: 200, data: { markdown: '# Report' } });
+        const { service, uploadCodeEnvFile } = setup();
+
+        const result = await provision(service);
+
+        expect(mockConvertPost).toHaveBeenCalledWith(
+          'http://docling.test/v1/convert',
+          Buffer.from('%PDF'),
+          expect.objectContaining({ params: { filename: 'report.pdf' } }),
+        );
+        expect(uploadCodeEnvFile).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            filename: 'report.pdf.md',
+            kind: 'user',
+            id: 'u1',
+            codeApiBaseUrl: 'http://stateful.test/v1',
+            executionProfile: 'stateful',
+          }),
+        );
+        const companions = [
+          { storage_session_id: 's2', file_id: 'remote-md', sandboxFilename: 'report.pdf.md' },
+        ];
+        expect(result.refUpdate.ref.companions).toEqual(companions);
+        expect(result.referenceSet.codeEnvRefs?.['stateful:abc']?.companions).toEqual(companions);
+      });
+
+      it('still provisions the original when conversion fails', async () => {
+        mockConvertPost.mockResolvedValue({ status: 500, data: { error: 'boom' } });
+        const { service, uploadCodeEnvFile } = setup();
+
+        const result = await provision(service);
+
+        expect(uploadCodeEnvFile).toHaveBeenCalledTimes(1);
+        expect(result.refUpdate.ref.file_id).toBe('remote-1');
+        expect(result.refUpdate.ref.companions).toBeUndefined();
+      });
     });
 
     it('defaults to the default deployment when no route is resolved', async () => {

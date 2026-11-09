@@ -1872,7 +1872,11 @@ export async function initializeAgent(
   /** Resolves the chat project's file resources once per request; the sandbox and the
    *  search path below both read them. */
   const loadChatProjectResources = async (): Promise<ResolvedChatProjectContext | null> => {
-    if (!shouldUseChatProjectContext || runtime.chatProjectContext == null || !requestFileOwnerScope) {
+    if (
+      !shouldUseChatProjectContext ||
+      runtime.chatProjectContext == null ||
+      !requestFileOwnerScope
+    ) {
       return null;
     }
     runtime.chatProjectContextResourcesPromise ??=
@@ -2944,7 +2948,9 @@ export async function initializeAgent(
     instructionsPromptFacts,
   };
 
-  prepareQueuedCodeFileContext(initializedAgent, [initializedAgent], user?.id);
+  prepareQueuedCodeFileContext(initializedAgent, [initializedAgent], user?.id, false, {
+    documentConversion: appConfig?.documentConversion,
+  });
   const queuedFileContext = initializedAgent.dynamicToolContextMap?.queued_code_files;
   if (typeof queuedFileContext === 'string') {
     assertModelBoundContent({

@@ -125,6 +125,8 @@ jest.mock('@librechat/api', () => {
     ...jest.requireActual('../../../../packages/api/src/files/operations'),
     ...jest.requireActual('../../../../packages/api/src/files/finalize'),
     sanitizeFilename: jest.fn((n) => n),
+    getUploadedCodeEnvFilename: jest.fn((uploaded, requested) => uploaded.filename || requested),
+    createMarkdownCompanions: jest.fn(async () => undefined),
     /** Grants both; these specs vary the capability set, not the role. */
     resolveToolRoleGrants: jest.fn(async () => ({ runCode: true, fileSearch: true })),
     parseText: jest.fn().mockResolvedValue({ text: '', bytes: 0 }),
@@ -1634,6 +1636,57 @@ describe('processAgentFileUpload', () => {
                 provisionedAt: expect.any(Number),
               },
             },
+          }),
+        }),
+        true,
+      );
+    });
+
+    it('records the Markdown version of a converted document on the codeEnvRef', async () => {
+      const codeEnvUpload = setupCodeEnvUpload({ storage_session_id: 'sess-1', file_id: 'fid-1' });
+      codeEnvUpload
+        .mockResolvedValueOnce({ storage_session_id: 'sess-1', file_id: 'fid-1' })
+        .mockResolvedValueOnce({ storage_session_id: 'sess-md', file_id: 'fid-md' });
+      const { createMarkdownCompanions } = require('@librechat/api');
+      createMarkdownCompanions.mockImplementationOnce(async ({ openSource, upload }) => {
+        await openSource();
+        const uploaded = await upload(Readable.from(['# Title']), 'upload.bin.md');
+        return [{ ...uploaded, sandboxFilename: 'upload.bin.md' }];
+      });
+      const documentConversion = { baseURL: 'http://docling:5001', fileTypes: ['bin'] };
+      const req = makeReq();
+      req.config.documentConversion = documentConversion;
+      await processAgentFileUpload({
+        req,
+        res: mockRes,
+        metadata: {
+          agent_id: 'agent-abc',
+          tool_resource: EToolResources.execute_code,
+          file_id: 'file-uuid',
+          message_file: true,
+        },
+      });
+
+      expect(createMarkdownCompanions).toHaveBeenCalledWith(
+        expect.objectContaining({ config: documentConversion, sandboxFilename: 'upload.bin' }),
+      );
+      /* The Markdown version is stored under the original's resource identity. */
+      expect(codeEnvUpload).toHaveBeenLastCalledWith(
+        expect.objectContaining({ filename: 'upload.bin.md', kind: 'user', id: 'user-123' }),
+      );
+      expect(db.createFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            codeEnvRef: expect.objectContaining({
+              file_id: 'fid-1',
+              companions: [
+                {
+                  storage_session_id: 'sess-md',
+                  file_id: 'fid-md',
+                  sandboxFilename: 'upload.bin.md',
+                },
+              ],
+            }),
           }),
         }),
         true,

@@ -2387,7 +2387,9 @@ export async function createRun({
     enqueueSubagentChildren(agent, pendingCodeFileAgents, visitedCodeFileAgents, false, false);
   }
   for (const agent of codeFileAgents.values()) {
-    prepareQueuedCodeFileContext(agent, codeFileAgents.values(), user?.id);
+    prepareQueuedCodeFileContext(agent, codeFileAgents.values(), user?.id, false, {
+      documentConversion: appConfig?.documentConversion,
+    });
   }
 
   const preparedCodeFileAgents = new WeakSet(codeFileAgents.values());
@@ -2395,7 +2397,9 @@ export async function createRun({
     if (!preparedCodeFileAgents.has(agent)) {
       if (agent.provisionState) agent.provisionState.codeEnvDestinations = undefined;
       codeFileAgents.set(agent.id, agent);
-      prepareQueuedCodeFileContext(agent, codeFileAgents.values(), user?.id, true);
+      prepareQueuedCodeFileContext(agent, codeFileAgents.values(), user?.id, true, {
+        documentConversion: appConfig?.documentConversion,
+      });
       preparedCodeFileAgents.add(agent);
     }
     const isSubagent = opts.isSubagent === true;

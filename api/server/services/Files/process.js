@@ -58,6 +58,8 @@ const {
   createCodeApiRateLimitBudget,
   getCodeApiUploadOptions,
   withCodeApiUploadRecovery,
+  createMarkdownCompanions,
+  getUploadedCodeEnvFilename,
   isLeader,
 } = require('@librechat/api');
 const {
@@ -1366,6 +1368,17 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
       }
       throw error;
     }
+    const companions = await createMarkdownCompanions({
+      config: appConfig?.documentConversion,
+      sandboxFilename: getUploadedCodeEnvFilename(uploaded, sandboxFilename),
+      openSource: () =>
+        getDownloadStream
+          ? getDownloadStream(req, downloadPath)
+          : Promise.resolve(fs.createReadStream(file.path)),
+      upload: (stream, filename) =>
+        uploadCodeEnvFile({ req, stream, filename, kind: codeKind, id: codeId }),
+      logger,
+    });
     fileInfoMetadata = mergeCodeEnvRef(undefined, {
       kind: codeKind,
       id: codeId,
@@ -1373,6 +1386,7 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
       file_id: uploaded.file_id,
       executionProfile: 'default',
       provisionedAt: Date.now(),
+      ...(companions ? { companions } : {}),
     });
   }
 

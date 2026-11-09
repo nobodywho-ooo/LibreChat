@@ -9,6 +9,7 @@ import {
   isAllDataRetention,
   isForcedTemporaryRetention,
   configSchema,
+  documentConversionSchema,
   balanceSchema,
   interfaceSchema,
   fileStorageSchema,
@@ -2178,5 +2179,29 @@ describe('outboundTimeoutsSchema', () => {
 
   it.each([0, -1, 1.5, 2_147_483_648])('rejects %s, which no timer could honor', (value) => {
     expect(outboundTimeoutsSchema.safeParse({ actionsMs: value }).success).toBe(false);
+  });
+});
+
+describe('documentConversionSchema', () => {
+  it('fills in the defaults', () => {
+    expect(documentConversionSchema.parse({ baseURL: 'http://docling:5001' })).toEqual({
+      baseURL: 'http://docling:5001',
+      fileTypes: ['pdf', 'docx', 'pptx'],
+      timeoutMs: 900_000,
+      maxFileSizeMB: 100,
+    });
+  });
+
+  it('is optional in the app config', () => {
+    expect(configSchema.parse({ version: '1.0.0' }).documentConversion).toBeUndefined();
+  });
+
+  it.each([
+    {},
+    { baseURL: 'not a url' },
+    { baseURL: 'http://docling', timeoutMs: 0 },
+    { baseURL: 'http://docling', extra: true },
+  ])('rejects %j', (value) => {
+    expect(documentConversionSchema.safeParse(value).success).toBe(false);
   });
 });

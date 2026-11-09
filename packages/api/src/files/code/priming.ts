@@ -9,6 +9,7 @@ import type { CodeEnvRef, TFile } from 'librechat-data-provider';
 import type { AxiosInstance } from 'axios';
 import type { CodeExecutionRoute } from '../provision/service';
 import type { CodeExecutionContext } from '~/agents/execution';
+import type { DocumentConversionConfig } from './markdown';
 import type { ServerRequest } from '~/types';
 import {
   claimCodeDestination,
@@ -22,6 +23,11 @@ import {
   createCodeApiUploadRegistry,
   withCodeApiUploadSlot,
 } from '~/utils/code';
+import {
+  getMarkdownCompanionName,
+  getMountableCompanions,
+  isConvertibleDocument,
+} from './markdown';
 import { codeExecutionHeaders } from '~/agents/execution';
 import { buildCodeEnvDownloadQuery } from './identity';
 import { getCodeEnvUploadFilename } from './form';
@@ -314,4 +320,40 @@ export function appendCodeFileContextLine(
     return `${toolContext}${contextLine}`;
   }
   return `${CODE_FILE_CONTEXT_HEADERS[location]}${contextLine}`;
+}
+
+/** Lines for the code-file note, telling the model each companion's path and origin. */
+export function getCompanionContextLines(
+  ref: CodeEnvRef | undefined,
+  originalName: string,
+  location: CodeFileLocation = 'sandbox',
+  exclude?: ReadonlySet<string>,
+): string {
+  return getMountableCompanions(ref, exclude)
+    .map(
+      (companion) =>
+        `\n\t- ${CODE_FILE_CONTEXT_ROOTS[location]}/${companion.sandboxFilename} (Markdown version of ${originalName})`,
+    )
+    .join('');
+}
+
+/**
+ * The note line for the Markdown version of a file that is not uploaded yet. Files are
+ * uploaded on demand, after the note is written, so the copy is announced only when
+ * the file will be converted, and as conditional, since the conversion may fail.
+ */
+export function getPlannedCompanionContextLine(
+  config: DocumentConversionConfig | undefined,
+  destination: string,
+  location: CodeFileLocation = 'sandbox',
+  exclude?: ReadonlySet<string>,
+): string {
+  if (!isConvertibleDocument(config, destination)) {
+    return '';
+  }
+  const name = getMarkdownCompanionName(destination);
+  if (exclude?.has(name)) {
+    return '';
+  }
+  return `\n\t- ${CODE_FILE_CONTEXT_ROOTS[location]}/${name} (Markdown version of ${destination}, once it is staged; absent if conversion failed)`;
 }

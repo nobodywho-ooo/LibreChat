@@ -84,6 +84,26 @@ export function createCodeFileDeleter({
       });
       const bridgeWorkerId = environment?.workerId ?? environment?.pairing?.workerId;
       const headers = await getAuthHeaders(req, bridgeWorkerId);
+      /* Markdown versions go with the original. Best-effort: the ref is cleared below
+       * either way, and the Code API expires what is left over. */
+      for (const companion of ref.companions ?? []) {
+        try {
+          await httpClient({
+            method: 'delete',
+            url: `${baseUrl}/files/${companion.storage_session_id}/${companion.file_id}${query}`,
+            headers: {
+              'User-Agent': 'LibreChat/1.0',
+              ...headers,
+              ...profileHeaders({ executionProfile, bridgeWorkerId }),
+            },
+            httpAgent,
+            httpsAgent,
+            timeout: 15000,
+          });
+        } catch (error) {
+          logger.warn('Code storage companion not deleted', getSafeErrorMetadata(error));
+        }
+      }
       try {
         await httpClient({
           method: 'delete',

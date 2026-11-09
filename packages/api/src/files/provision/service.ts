@@ -29,6 +29,7 @@ import {
 } from '~/utils';
 import { getCodeEnvUploadFilename, getUploadedCodeEnvFilename } from '../code/form';
 import { buildCodeEnvIdentityParams } from '~/files/code/identity';
+import { createMarkdownCompanions } from '../code/markdown';
 import { codeExecutionHeaders } from '~/agents/execution';
 import { getCodeApiAuthHeaders } from '~/auth/codeapi';
 import { resolveDownloadPath } from '~/storage/path';
@@ -352,6 +353,30 @@ export function createProvisionService({
      * mergeCodeEnvRef, so both the legacy pointer and the route-keyed map stay in sync
      * and pointers for other Code API routes survive re-provisioning. */
     const storedSandboxFilename = getUploadedCodeEnvFilename(uploaded, sandboxFilename);
+    const companions = await createMarkdownCompanions({
+      config: req.config?.documentConversion,
+      sandboxFilename: storedSandboxFilename,
+      openSource: async () => {
+        const stream = await getStorageStream(file, req, signal);
+        if (!stream) {
+          throw new Error(`storage source "${file.source}" does not support download streams`);
+        }
+        return stream;
+      },
+      upload: (stream, filename) =>
+        uploadCodeEnvFile({
+          req,
+          stream,
+          filename,
+          kind,
+          id,
+          ...(route?.baseUrl ? { codeApiBaseUrl: route.baseUrl } : {}),
+          executionProfile,
+          signal,
+        }),
+      logger,
+      signal,
+    });
     const ref: CodeEnvRef = {
       kind,
       id,
@@ -361,6 +386,7 @@ export function createProvisionService({
       ...(route?.executionRouteKey ? { executionRouteKey: route.executionRouteKey } : {}),
       provisionedAt: Date.now(),
       sandboxFilename: storedSandboxFilename,
+      ...(companions ? { companions } : {}),
     };
     const referenceSet = mergeCodeEnvRef(file.metadata, ref);
     const routeKey = route?.executionRouteKey ?? executionProfile;

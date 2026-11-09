@@ -55,6 +55,8 @@ export interface AppConfig {
   config: Partial<TCustomConfig>;
   /** OCR configuration */
   ocr?: TCustomConfig['ocr'];
+  /** Markdown versions of documents copied into the code environment */
+  documentConversion?: TCustomConfig['documentConversion'];
   /** File paths configuration */
   paths?: {
     uploads: string;
